@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Control Center</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #00adb5;
+            --dark: #222831;
+            --light: #eeeeee;
+            --accent: #393e46;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--dark);
+            color: var(--light);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: var(--accent);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+        h1 { margin-bottom: 0.5rem; color: var(--primary); }
+        p { color: #aaa; margin-bottom: 2rem; }
+        .status-card {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-around;
+        }
+        .stat { display: flex; flex-direction: column; }
+        .stat i { color: var(--primary); font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background-color: #00ced1;
+            transform: translateY(-2px);
+        }
+        .btn:active { transform: translateY(0); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <i class="fas fa-microchip" style="font-size: 3rem; color: var(--primary);"></i>
+    <h1>ESP32 Server</h1>
+    <p>System läuft stabil</p>
+
+    <div class="status-card">
+        <div class="stat">
+            <i class="fas fa-thermometer-half"></i>
+            <span>24°C</span>
+        </div>
+        <div class="stat">
+            <i class="fas fa-wifi"></i>
+            <span>Verbunden</span>
+        </div>
+        <div class="stat">
+            <i class="fas fa-bolt"></i>
+            <span>3.3V</span>
+        </div>
+    </div>
+
+    <button class="btn" onclick="toggleLED()">LED Umschalten</button>
+    
+    <div style="margin-top: 2rem; font-size: 0.8rem; color: #666;">
+        Build mit C++ Sockets & Gemini
+    </div>
+</div>
+
+<script>
+    function toggleLED() {
+        alert("Sende Befehl an den ESP32...");
+        // Hier könntest du später einen fetch() Aufruf einbauen
+    }
+</script>
+
+</body>
+</html>
