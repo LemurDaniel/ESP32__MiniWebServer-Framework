@@ -53,24 +53,23 @@ This framework is a personal Project providing a MiniWebserver with dynmiacally 
 
 ### Installation
 
-1. **Clone the repository** 📋
-   ```bash
-   git clone <repository-url>
-   cd ESP32__MiniWebServer-Framework
-   ```
+1. **Connect your ESP32 via USB Cable** 🔌
 
-2. **Open in PlatformIO** 💻
-   ```bash
-   pio project init
-   ```
+2. **Install Plattfrom.IO Extension** 💾
 
 3. **Update WiFi credentials** 🔐
    Edit `src/main.cpp` and update your WiFi settings:
    ```cpp
    custom_utils::connectWiFi("YOUR_WIFI_NAME", "YOUR_PASSWORD");
    ```
+   
+4. **Build and Upload FileSystem (to push /data contents to ESP32)** 🔨
 
-4. **Use Plattform.IO to Upload and Monitor** 🔨
+![PlatformIO.IO](.assets/pio.build-filesystem.png)
+
+5. **Use Plattform.IO to Upload and Monitor code from main.cpp** 🔨
+
+![PlatformIO.IO](.assets/pio.upload-monitor.png)
 
 ## 🎮 Usage
 
