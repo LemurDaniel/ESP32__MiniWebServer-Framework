@@ -16,8 +16,8 @@ namespace ESP32WebServer
      **/
     MiniServer::MiniServer(const std::string &ip_addr, int port)
     {
-        is_running = false; 
-        
+        is_running = false;
+
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
         if (inet_pton(AF_INET, ip_addr.c_str(), &address.sin_addr) <= 0)
@@ -79,7 +79,7 @@ namespace ESP32WebServer
      **/
     void MiniServer::listenClient()
     {
-        if(!is_running)
+        if (!is_running)
         {
             if (startServer() != 0)
             {
@@ -209,25 +209,29 @@ namespace ESP32WebServer
             return;
         }
 
-        char header[256];
-        snprintf(header, sizeof(header),
-                 "HTTP/1.1 200 OK\r\n"
-                 "Content-Type: text/html\r\n"
-                 "Content-Length: %zu\r\n"
-                 "Connection: close\r\n\r\n",
-                 file.size());
+        const std::string header =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: " +
+            std::to_string(file.size()) + "\r\n" +
+            "Connection: close\r\n\r\n";
 
-        write(client_socket, header, strlen(header));
+        write(client_socket, header.c_str(), header.size());
 
         char chunk[512];
         size_t n;
 
+        Serial.printf("File size: %zu bytes\n", file.size());
+        Serial.println("Starting to send file in chunks...");
         while ((n = file.readBytes(chunk, sizeof(chunk))) > 0)
         {
+            Serial.printf("Sending chunk of size: %zu\n", n);
+            Serial.printf("Chunk content:\n%.*s\n", (int)n, chunk);
             write(client_socket, chunk, n);
         }
 
         file.close();
+        Serial.println("Finished sending file.");
     }
 
     void MiniServer::addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))

@@ -2,10 +2,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-#pragma once
 #include <../lib/server/router.h>
 
-namespace routes_test
+namespace routes_example
 {
     void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
@@ -25,6 +24,19 @@ namespace routes_test
         res.json(status).status(200);
     }
 
+    void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        res.text("This is an example route!").status(200);
+    }
+
+    void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        JsonDocument response;
+        response["message"] = "Data received successfully";
+        response["timestamp"] = millis();
+        res.json(response).status(201);
+    }
+
     /**
      ***********************************************
      ************************************************
@@ -38,7 +50,9 @@ namespace routes_test
         ESP32WebServer::Router router;
         router.add("GET", "/hello", get_hello);
         router.add("GET", "/status", get_status);
-        // Weitere Routen hier hinzufügen
+        router.add("GET", "/example", get_example);
+        router.add("POST", "/data", post_data);
+        // Add more routes here as needed
         return router;
     }
 }
