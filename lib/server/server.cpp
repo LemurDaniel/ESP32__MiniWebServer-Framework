@@ -129,7 +129,7 @@ namespace ESP32WebServer
         // Simple serving of a static file if path matches, otherwise look for dynamic route handlers
         if (file_responses.find(request.path) != file_responses.end())
         {
-            serveFile(client_socket, request.path);
+            serveFile(client_socket, file_responses[request.path]);
             close(client_socket);
             return;
         }
@@ -183,55 +183,69 @@ namespace ESP32WebServer
 
     void MiniServer::serveFile(int client_socket, const std::string &path)
     {
-
-        if (!LittleFS.begin())
+        // Check if LittleFS is already mounted, if not, mount it
+        if (!LittleFS.begin(true)) // Format if mount fails
         {
-            Serial.println("An Error has occurred while mounting LittleFS");
+            Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
             return;
         }
 
-        Serial.printf("Serving file: %s\n", path.c_str());
-
+        // Try to open the requested file
+        Serial.printf("📁 Serving file: '%s'\n", path.c_str());
         File file = LittleFS.open(path.c_str(), "r");
         if (!file)
         {
-            Serial.println("Failed to open file for reading");
-
-            const char *body = "Not Found";
+            Serial.println("❌ File not found - sending 404");
+            const char *body = "File Not Found";
             const char *header =
                 "HTTP/1.1 404 Not Found\r\n"
                 "Content-Type: text/plain\r\n"
-                "Content-Length: 9\r\n"
+                "Content-Length: 14\r\n"
                 "Connection: close\r\n\r\n";
 
             write(client_socket, header, strlen(header));
-            write(client_socket, body, 9);
+            write(client_socket, body, strlen(body));
             return;
         }
 
+        // Check file size and existence
+        size_t fileSize = file.size();
+        if (fileSize == 0)
+        {
+            Serial.println("⚠️  WARNING: File size is 0 bytes!");
+        }
+
+
         const std::string header =
             "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n"
             "Content-Length: " +
-            std::to_string(file.size()) + "\r\n" +
+            std::to_string(fileSize) + "\r\n" +
             "Connection: close\r\n\r\n";
 
         write(client_socket, header.c_str(), header.size());
 
         char chunk[512];
-        size_t n;
+        size_t totalSent = 0;
 
-        Serial.printf("File size: %zu bytes\n", file.size());
-        Serial.println("Starting to send file in chunks...");
-        while ((n = file.readBytes(chunk, sizeof(chunk))) > 0)
+        file.seek(0); // Ensure we start from the beginning
+        while (file.available() && totalSent < fileSize)
         {
-            Serial.printf("Sending chunk of size: %zu\n", n);
-            Serial.printf("Chunk content:\n%.*s\n", (int)n, chunk);
-            write(client_socket, chunk, n);
+            size_t n = file.readBytes(chunk, sizeof(chunk));
+            if (n > 0)
+            {
+                write(client_socket, chunk, n);
+                totalSent += n;
+            }
+            else
+            {
+                Serial.println("⚠️  WARNING: Read error while serving file!");
+                break;
+            }
         }
 
         file.close();
-        Serial.println("Finished sending file.");
+        Serial.printf("✅ File transfer completed: %zu bytes sent\n", totalSent);
     }
 
     void MiniServer::addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))
