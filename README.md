@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 # 🚀 (Prototype) ESP32 Mini WebServer Framework
 
 <div align="center">
