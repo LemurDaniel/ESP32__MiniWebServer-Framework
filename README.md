@@ -260,6 +260,9 @@ void put_system_config() { ... }
 ```
 
 #### **📤 Sending Responses**
+
+Sending Response is simplified with lots of helper methods and automatic building of the response under the hood.
+
 ```cpp
 void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res) {
     // 📝 Text response
@@ -270,6 +273,9 @@ void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &r
     jsonData["message"] = "Success";
     jsonData["timestamp"] = millis();
     res.json(jsonData).status(200);
+
+    // Or
+    res.json(jsonData).Ok();
     
     // 📁 File response
     res.file("/web/data.json").status(200);
@@ -277,6 +283,13 @@ void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &r
     // ❌ Error responses
     res.text("Not found").status(404);
     res.text("Internal error").status(500);
+
+    // Automatic 200 with some text
+    res.Ok()
+    // Automatic 404 with some text
+    res.NotFound()
+    // Automatic 500 Internal Server error
+    res.InternalServerError()
 }
 ```
 

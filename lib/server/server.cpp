@@ -128,6 +128,8 @@ namespace ESP32WebServer
 
     void MiniServer::handleClient(int client_socket)
     {
+        Serial.println("\n\n\nHandling client request...");
+
         char buffer[1024];
 
         int bytesRead = read(client_socket, buffer, sizeof(buffer) - 1);
@@ -140,10 +142,7 @@ namespace ESP32WebServer
 
         buffer[bytesRead] = '\0'; // Null-terminate the buffer to make it a valid C-string
 
-        Serial.printf("\n\n*******************************\n");
-        Serial.printf("Received request:\n%s", buffer);
-        Serial.printf("*******************************\n\n");
-
+        // Parse the raw HTTP request into a structured Request object
         Request request = Request::parse(buffer);
         Response response = Response();
 
@@ -164,14 +163,13 @@ namespace ESP32WebServer
             const auto route = routes[routeKey];
             route(request, response);
 
-            std::string header = response.getHeaders();
-
-            if(response.responseMode == "file")
+            if (response.responseMode == "file")
             {
                 serveFile(client_socket, response);
             }
             else
             {
+                std::string header = response.getHeaders();
                 write(client_socket, header.c_str(), header.size());
                 write(client_socket, response.body.c_str(), response.body.size());
             }
@@ -181,24 +179,6 @@ namespace ESP32WebServer
 
         Serial.printf("No route found for path: %s\n", request.path.c_str());
         close(client_socket);
-    }
-
-    /************************************************
-     ************************************************
-     * Serve index or handle GET/POST requests:
-     *
-     **/
-    void MiniServer::addFile(const std::string &path, const std::string &file_path)
-    {
-        Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
-        file_responses.insert({path, file_path});
-    }
-
-    void MiniServer::index(const std::string &index_path)
-    {
-        addFile("/", index_path);
-        addFile("/index", index_path);
-        addFile("/index.html", index_path);
     }
 
     void MiniServer::serveFile(int client_socket, Response &res)
@@ -230,6 +210,24 @@ namespace ESP32WebServer
 
         file.close();
         Serial.printf("✅ File transfer completed: %zu bytes sent\n", totalSent);
+    }
+
+    /************************************************
+     ************************************************
+     * Serve index or handle GET/POST requests:
+     *
+     **/
+    void MiniServer::addFile(const std::string &path, const std::string &file_path)
+    {
+        Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
+        file_responses.insert({path, file_path});
+    }
+
+    void MiniServer::index(const std::string &index_path)
+    {
+        addFile("/", index_path);
+        addFile("/index", index_path);
+        addFile("/index.html", index_path);
     }
 
     void MiniServer::addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))

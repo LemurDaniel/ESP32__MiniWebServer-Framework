@@ -11,6 +11,8 @@ namespace ESP32WebServer
     class Response
     {
     public:
+        std::string responseMode = "body"; // "body" or "file"
+
         // HTTP status code for the response (e.g., 200 for OK, 404 for Not Found)
         int status_code = 200;
 
@@ -18,30 +20,40 @@ namespace ESP32WebServer
         std::map<std::string, std::string> headers;
 
         // Default content type is text/plain, but can be set to application/json or others as needed
-        std::string contentType = "text/plain";
-        int contentLength = 0;
         std::string body;
 
         // For static file responses, this will be set to the file path to serve
         size_t fileSize;
         std::string filePath;
 
-        std::string responseMode = "body"; // "body" or "file"
-
-        std::string getHeaders() const
-        {
-            std::string header = "HTTP/1.1 " + std::to_string(status_code) + "\r\n" +
-                                 "Content-Type: " + contentType + "\r\n" +
-                                 "Content-Length: " + std::to_string(contentLength) + "\r\n" +
-                                 "Connection: close\r\n\r\n";
-
-            return header;
-        }
-
-        std::string addHeader(const std::string &key, const std::string &value)
+        std::string header(const std::string &key, const std::string &value)
         {
             headers[key] = value;
             return value;
+        }
+
+        std::string getHeaders()
+        {
+
+            if (responseMode == "file")
+            {
+                this->header("Content-Length", std::to_string(fileSize));
+            }
+            else
+            {
+                this->header("Content-Length", std::to_string(body.size()));
+            }
+
+            std::string header = "HTTP/1.1 " + std::to_string(status_code) + "\r\n";
+
+            for (const auto &h : headers)
+            {
+                header += h.first + ": " + h.second + "\r\n";
+            }
+
+            header += "Connection: close\r\n\r\n";
+
+            return header;
         }
 
         /**
@@ -55,18 +67,30 @@ namespace ESP32WebServer
 
         Response OK()
         {
+            if (this->body.empty())
+            {
+                this->body = "OK";
+            }
             this->status_code = 200;
             return *this;
         }
 
         Response NotFound()
         {
+            if (this->body.empty())
+            {
+                this->body = "Not Found";
+            }
             this->status_code = 404;
             return *this;
         }
 
         Response InternalServerError()
         {
+            if (this->body.empty())
+            {
+                this->body = "Internal Server Error";
+            }
             this->status_code = 500;
             return *this;
         }
@@ -80,16 +104,16 @@ namespace ESP32WebServer
         /**
          **************************************************
          **************************************************
-         *
+         * Response body helpers for different content types
          *
          */
         Response file(const std::string &path)
         {
             this->binaryFile(path);
 
-            // Set content to text, so browser displays instead of downloading. 
-            this->contentType = "text/html; charset=utf-8";
-            
+            // Set content to text, so browser displays instead of downloading.
+            this->header("Content-Type", "text/html; charset=utf-8;");
+
             return *this;
         }
 
@@ -119,8 +143,7 @@ namespace ESP32WebServer
                 Serial.println("⚠️  WARNING: File size is 0 bytes!");
             }
 
-            this->contentType = "application/octet-stream"; // Default to binary, can be improved by checking file extension
-            this->contentLength = file.size();
+            this->header("Content-Type", "application/octet-stream"); // Set content type for binary file
             this->fileSize = file.size();
             this->filePath = path;
             this->responseMode = "file";
@@ -135,8 +158,7 @@ namespace ESP32WebServer
         {
             this->body = text;
             this->responseMode = "body";
-            this->contentType = "text/plain";
-            this->contentLength = text.size();
+            this->header("Content-Type", "text/plain");
             return *this;
         }
 
@@ -147,8 +169,7 @@ namespace ESP32WebServer
 
             this->body = body;
             this->responseMode = "body";
-            this->contentType = "application/json";
-            this->contentLength = strlen(body);
+            this->header("Content-Type", "application/json");
             return *this;
         }
 
