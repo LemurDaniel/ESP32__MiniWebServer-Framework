@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <WiFi.h>
 #include <Arduino.h>
 #include <LittleFS.h>
 
@@ -31,6 +32,11 @@ namespace ESP32WebServer
         MiniServer(const std::string &ip_addr, int port);
         ~MiniServer();
 
+        // Connect to WiFi network via SSID (Name of WiFi) and password
+        WiFiClass connectWiFi(const std::string &ssid, const std::string &password);
+
+        // This is a blocking call that listens for incoming client connections and handles them
+        // May be executed on a different Thread or Core to avoid blocking the main loop
         void listenClient();
 
         // Serve a static file as index.html on the root path

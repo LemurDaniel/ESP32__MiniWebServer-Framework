@@ -27,8 +27,8 @@ This framework is a personal Project providing a MiniWebserver with dynmiacally 
 │   ├── 🎯 main.cpp                 # Main application entry
 │   └── 📁 routes/
 │       └── 🛤️ routes.test.h        # API route definitions
+│       └── 🛤️ routes.test.cpp      # API route Implementations
 ├── 📁 lib/
-│   ├── 🔧 utilities.h             # Helper utilities
 │   └── 📁 server/
 │       ├── 🌐 server.h/.cpp        # Core web server
 │       ├── 🛤️ router.h             # Routing engine
@@ -94,42 +94,110 @@ This framework is a personal Project providing a MiniWebserver with dynmiacally 
 ### 📁 **Router File Structure**
 
 Routes are organized in separate header files within the `src/routes/` directory, each following a clean, consistent pattern:
+These Router Constructor can be registered on the server.
 
 ```cpp
-// src/routes/routes.example.h
+#include <../lib/server/server.h>
+
+// Include the Router File
+#include <routes/routes.example.h>
+
+// Register Routes from the seperate Files
+Server.registerRouter(routes_example::Router());
+```
+
+The included ```<routes/routes.example.h>``` header files defines all methods and the Router
+
+```cpp
+
+#include <Arduino.h>
+#include <WiFi.h>
+
 #include <../lib/server/router.h>
 
-namespace routes_example {
-    
-    // Route Handler Functions
-    void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res) {
+namespace routes_example
+{
+    /**
+     ***********************************************
+     ************************************************
+     * Defining routes for overview and testing
+     *
+     *
+     **/
+
+    void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+    void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+    void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+    void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+
+    class Router : public ESP32WebServer::Router
+    {
+    public:
+        Router()
+        {
+            add("GET", "/hello", get_hello);
+            add("GET", "/status", get_status);
+            add("GET", "/example", get_example);
+            add("POST", "/data", post_data);
+        }
+    };
+
+}
+```
+
+The Code ist implemented in the CPP-File including its Header-File
+
+```cpp
+
+#include <routes/routes.example.h>
+
+namespace routes_example
+{
+    /**
+     ***********************************************
+     ************************************************
+     * Implementing actual routes
+     *
+     *
+     **/
+    void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        res.text("Hello, World! This is a simple response from the ESP32.").status(200);
+    }
+
+    void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        JsonDocument status;
+
+        status["device"] = "ESP32";
+        status["firmware"] = "1.0.0";
+        status["uptime"] = static_cast<double>(millis());
+        status["free_heap"] = static_cast<double>(ESP.getFreeHeap());
+        status["wifi_rssi"] = static_cast<double>(WiFi.RSSI());
+
+        res.json(status).status(200);
+    }
+
+    void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
         res.text("This is an example route!").status(200);
     }
-    
-    void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res) {
+
+    void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
         JsonDocument response;
         response["message"] = "Data received successfully";
         response["timestamp"] = millis();
         res.json(response).status(201);
     }
-    
-    // Router Configuration Function
-    ESP32WebServer::Router Router() {
-        ESP32WebServer::Router router;
-        router.add("GET", "/example", get_example);
-        router.add("POST", "/data", post_data);
-        return router;
-    }
+
 }
 ```
 
-### ⚡ **Adding New Routes to the Server**
-
-#### **Directly Configure Routes on the Server**
+#### ⚡ **Configure Routes on the Server**
 ```cpp
 #include <Arduino.h>
 
-#include <../lib/utilities.h>
 #include <../lib/server/server.h>
 
 // Include the Router File
@@ -141,7 +209,9 @@ void setup()
 {
   Serial.begin(115200);
 
-  custom_utils::connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "**secret-pwd**");
+  // Connect to your HOME WiFi Network
+  // This makes it directly reachable for any device in that network
+  Server.connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "**secret-pwd**");
 
   // Set a path as index (Needs LittleFS as FileSystem)
   Server.index("/web/index.html");

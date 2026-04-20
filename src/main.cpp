@@ -1,6 +1,5 @@
 #include <Arduino.h>
 
-#include <../lib/utilities.h>
 #include <../lib/server/server.h>
 
 #include <routes/routes.example.h>
@@ -11,14 +10,14 @@ void setup()
 {
   Serial.begin(115200);
 
-  custom_utils::connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "**SECRET PASSWORD**");
-
   Server.index("/web/index.html");
   Server.registerRouter(routes_example::Router());
+
+  Server.connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "**Password Here**");
 }
 
 void loop()
-{ 
+{
   Serial.println("Waiting for clients...");
   // Main server loop
   Server.listenClient();

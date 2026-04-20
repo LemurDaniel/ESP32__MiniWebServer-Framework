@@ -38,6 +38,27 @@ namespace ESP32WebServer
         close(server_socket);
     }
 
+    WiFiClass MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
+    {
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(ssid.c_str(), password.c_str());
+
+        Serial.println();
+        Serial.print("Connecting to WiFi...");
+        while (WiFi.status() != WL_CONNECTED)
+        {
+            delay(500);
+            Serial.print(".");
+        }
+
+        Serial.println("Connected!");
+        Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
+        Serial.println();
+
+        return WiFi;
+    }
+
     int MiniServer::startServer()
     {
         server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -214,7 +235,6 @@ namespace ESP32WebServer
         {
             Serial.println("⚠️  WARNING: File size is 0 bytes!");
         }
-
 
         const std::string header =
             "HTTP/1.1 200 OK\r\n"
