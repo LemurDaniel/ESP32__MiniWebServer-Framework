@@ -17,7 +17,7 @@
 
 A lightweight **Mini WebServer Framework** for ESP32 microcontrollers! 🎉 
 
-This framework is a personal Project providing a MiniWebserver with dynmiacally managable Endpoints and easier request and reponse handleing! 📊✨
+This framework is a personal Project providing a MiniWebserver with dynamically managable Endpoints and easier request and response handling! 📊✨
 
 ## 📁 Project Structure
 
@@ -221,15 +221,15 @@ void setup()
 
   // Directly Configure Routes
   // 🟢 GET routes
-  // router.add("GET", "/sensors", get_sensor_data);
-  // router.add("GET", "/system/info", get_system_info);
+  // Server.add("GET", "/sensors", get_sensor_data);
+  // Server.add("GET", "/system/info", get_system_info);
     
   // 🟡 POST routes
-  // router.add("POST", "/led", post_led_control);
-  // router.add("POST", "/config", post_configuration);
+  // Server.add("POST", "/led", post_led_control);
+  // Server.add("POST", "/config", post_configuration);
     
   // 🔵 PUT routes
-  // router.add("PUT", "/settings", put_update_settings);
+  // Server.add("PUT", "/settings", put_update_settings);
 }
 ```
 
