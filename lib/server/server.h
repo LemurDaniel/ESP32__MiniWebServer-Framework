@@ -65,7 +65,7 @@ namespace ESP32WebServer
 
         // Map of path to file path for static file serving
         std::map<std::string, std::string> file_responses;
-        void serveFile(int client_socket, const std::string &path);
+        void serveFile(int client_socket, Response &res);
 
         // Map of "METHOD PATH" to handler function for dynamic routes
         std::map<std::string, void (*)(const Request &, Response &)> routes;

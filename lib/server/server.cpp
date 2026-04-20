@@ -150,7 +150,8 @@ namespace ESP32WebServer
         // Simple serving of a static file if path matches, otherwise look for dynamic route handlers
         if (file_responses.find(request.path) != file_responses.end())
         {
-            serveFile(client_socket, file_responses[request.path]);
+            response.file(file_responses[request.path]);
+            serveFile(client_socket, response);
             close(client_socket);
             return;
         }
@@ -163,19 +164,17 @@ namespace ESP32WebServer
             const auto route = routes[routeKey];
             route(request, response);
 
-            std::string header = "HTTP/1.1 " + std::to_string(response.status_code) + " OK\r\n" +
-                                 "Content-Type: " + response.contentType + "\r\n" +
-                                 "Content-Length: " + std::to_string(response.body.size()) + "\r\n" +
-                                 "Connection: close\r\n\r\n";
+            std::string header = response.getHeaders();
 
-            for (const auto &pair : response.headers)
+            if(response.responseMode == "file")
             {
-                header += pair.first + ": " + pair.second + "\r\n";
+                serveFile(client_socket, response);
             }
-
-            write(client_socket, header.c_str(), header.size());
-            write(client_socket, response.body.c_str(), response.body.size());
-            close(client_socket);
+            else
+            {
+                write(client_socket, header.c_str(), header.size());
+                write(client_socket, response.body.c_str(), response.body.size());
+            }
 
             return;
         }
@@ -202,54 +201,19 @@ namespace ESP32WebServer
         addFile("/index.html", index_path);
     }
 
-    void MiniServer::serveFile(int client_socket, const std::string &path)
+    void MiniServer::serveFile(int client_socket, Response &res)
     {
-        // Check if LittleFS is already mounted, if not, mount it
-        if (!LittleFS.begin(true)) // Format if mount fails
-        {
-            Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
-            return;
-        }
 
-        // Try to open the requested file
-        Serial.printf("📁 Serving file: '%s'\n", path.c_str());
-        File file = LittleFS.open(path.c_str(), "r");
-        if (!file)
-        {
-            Serial.println("❌ File not found - sending 404");
-            const char *body = "File Not Found";
-            const char *header =
-                "HTTP/1.1 404 Not Found\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 14\r\n"
-                "Connection: close\r\n\r\n";
+        File file = LittleFS.open(res.filePath.c_str(), "r");
 
-            write(client_socket, header, strlen(header));
-            write(client_socket, body, strlen(body));
-            return;
-        }
-
-        // Check file size and existence
-        size_t fileSize = file.size();
-        if (fileSize == 0)
-        {
-            Serial.println("⚠️  WARNING: File size is 0 bytes!");
-        }
-
-        const std::string header =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html; charset=utf-8\r\n"
-            "Content-Length: " +
-            std::to_string(fileSize) + "\r\n" +
-            "Connection: close\r\n\r\n";
-
+        const std::string header = res.getHeaders();
         write(client_socket, header.c_str(), header.size());
 
         char chunk[512];
         size_t totalSent = 0;
 
         file.seek(0); // Ensure we start from the beginning
-        while (file.available() && totalSent < fileSize)
+        while (file.available() && totalSent < res.fileSize)
         {
             size_t n = file.readBytes(chunk, sizeof(chunk));
             if (n > 0)

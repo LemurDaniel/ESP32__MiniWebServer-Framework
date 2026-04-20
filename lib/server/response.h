@@ -1,6 +1,8 @@
 #pragma once
 
 #include <ArduinoJson-v7.4.3.h>
+
+#include <LittleFS.h>
 #include <string>
 #include <map>
 
@@ -9,10 +11,65 @@ namespace ESP32WebServer
     class Response
     {
     public:
+        // HTTP status code for the response (e.g., 200 for OK, 404 for Not Found)
         int status_code = 200;
+
+        // Custom headers to include in the response
         std::map<std::string, std::string> headers;
+
+        // Default content type is text/plain, but can be set to application/json or others as needed
         std::string contentType = "text/plain";
+        int contentLength = 0;
         std::string body;
+
+        // For static file responses, this will be set to the file path to serve
+        size_t fileSize;
+        std::string filePath;
+
+        std::string responseMode = "body"; // "body" or "file"
+
+        std::string getHeaders() const
+        {
+            std::string header = "HTTP/1.1 " + std::to_string(status_code) + "\r\n" +
+                                 "Content-Type: " + contentType + "\r\n" +
+                                 "Content-Length: " + std::to_string(contentLength) + "\r\n" +
+                                 "Connection: close\r\n\r\n";
+
+            return header;
+        }
+
+        std::string addHeader(const std::string &key, const std::string &value)
+        {
+            headers[key] = value;
+            return value;
+        }
+
+        /**
+         **************************************************
+         **************************************************
+         * Common status codes:
+         * 200 - OK
+         * 404 - Not Found
+         * 500 - Internal Server Error
+         */
+
+        Response OK()
+        {
+            this->status_code = 200;
+            return *this;
+        }
+
+        Response NotFound()
+        {
+            this->status_code = 404;
+            return *this;
+        }
+
+        Response InternalServerError()
+        {
+            this->status_code = 500;
+            return *this;
+        }
 
         Response status(int status)
         {
@@ -20,10 +77,66 @@ namespace ESP32WebServer
             return *this;
         }
 
+        /**
+         **************************************************
+         **************************************************
+         *
+         *
+         */
+        Response file(const std::string &path)
+        {
+            this->binaryFile(path);
+
+            // Set content to text, so browser displays instead of downloading. 
+            this->contentType = "text/html; charset=utf-8";
+            
+            return *this;
+        }
+
+        Response binaryFile(const std::string &path)
+        {
+            // Check if LittleFS is already mounted, if not, mount it
+            if (!LittleFS.begin(true)) // Format if mount fails
+            {
+                Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
+                this->InternalServerError().text("Internal Server Error: Filesystem Unavailable");
+                return *this;
+            }
+
+            // Try to open the requested file
+            File file = LittleFS.open(path.c_str(), "r");
+            if (!file)
+            {
+                Serial.println("❌ File not found - sending 404");
+                this->NotFound().text("File Not Found");
+                file.close();
+                return *this;
+            }
+
+            // Check file size and existence
+            if (file.size() == 0)
+            {
+                Serial.println("⚠️  WARNING: File size is 0 bytes!");
+            }
+
+            this->contentType = "application/octet-stream"; // Default to binary, can be improved by checking file extension
+            this->contentLength = file.size();
+            this->fileSize = file.size();
+            this->filePath = path;
+            this->responseMode = "file";
+
+            Serial.printf("✅ File '%s' is ready to be served (size: %d bytes)\n", path.c_str(), this->fileSize);
+
+            file.close();
+            return *this;
+        }
+
         Response text(const std::string &text)
         {
             this->body = text;
+            this->responseMode = "body";
             this->contentType = "text/plain";
+            this->contentLength = text.size();
             return *this;
         }
 
@@ -33,7 +146,9 @@ namespace ESP32WebServer
             serializeJson(jsonBody, body, sizeof(body));
 
             this->body = body;
+            this->responseMode = "body";
             this->contentType = "application/json";
+            this->contentLength = strlen(body);
             return *this;
         }
 
