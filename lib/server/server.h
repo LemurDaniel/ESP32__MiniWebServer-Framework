@@ -1,3 +1,7 @@
+// ESP32 MiniWebServer Framework - https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework
+// Copyright © 2026, Daniel Landau
+// MIT License
+
 #ifndef INCLUDED_HTTP_TCPSERVER_LINUX
 #define INCLUDED_HTTP_TCPSERVER_LINUX
 

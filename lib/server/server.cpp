@@ -1,3 +1,6 @@
+// ESP32 MiniWebServer Framework - https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework
+// Copyright © 2026, Daniel Landau
+// MIT License
 
 #include <server.h>
 

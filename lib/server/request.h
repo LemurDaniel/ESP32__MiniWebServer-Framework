@@ -1,3 +1,7 @@
+// ESP32 MiniWebServer Framework - https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework
+// Copyright © 2026, Daniel Landau
+// MIT License
+
 #pragma once
 
 #include <ArduinoJson-v7.4.3.h>
