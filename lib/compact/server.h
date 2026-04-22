@@ -26,10 +26,6 @@
 
 #include <ArduinoJson-v7.4.3.h>
 
-#include <utility.wifi.h>
-#include <utility.admin.h>
-#include <router.h>
-
 namespace ESP32WebServer
 {
     class Request
@@ -356,7 +352,7 @@ namespace ESP32WebServer
                 is_running = true;
                 Serial.println("Server started and listening for clients...");
 
-                this->registerRouter(ESP32WebServer::AdminRouter());
+                //  this->registerRouter(ESP32WebServer::AdminRouter());
             }
 
             struct sockaddr_in client_addr;
