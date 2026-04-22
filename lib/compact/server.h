@@ -26,6 +26,10 @@
 
 #include <ArduinoJson-v7.4.3.h>
 
+#include <utility.wifi.h>
+#include <utility.admin.h>
+#include <router.h>
+
 namespace ESP32WebServer
 {
     class Request
@@ -348,8 +352,11 @@ namespace ESP32WebServer
                     Serial.println("Failed to start server");
                     return;
                 }
+
                 is_running = true;
                 Serial.println("Server started and listening for clients...");
+
+                this->registerRouter(ESP32WebServer::AdminRouter());
             }
 
             struct sockaddr_in client_addr;
@@ -453,7 +460,7 @@ namespace ESP32WebServer
         };
         int is_running = false;
 
-        void handleClient(int client_socket)
+        void MiniServer::handleClient(int client_socket)
         {
             Serial.println("\n\n\nHandling client request...");
 
@@ -473,18 +480,22 @@ namespace ESP32WebServer
             Request request = Request::parse(buffer);
             Response response = Response();
 
+            Serial.println("\n\n\n--- Raw HTTP Request ---");
+            Serial.println(buffer);
+            Serial.println("--------------------------");
+
+            // Search for a matching route handler
+            const std::string routeKey = request.method + " " + request.path;
+
             // Simple serving of a static file if path matches, otherwise look for dynamic route handlers
             if (file_responses.find(request.path) != file_responses.end())
             {
                 response.file(file_responses[request.path]);
                 serveFile(client_socket, response);
                 close(client_socket);
-                return;
             }
 
-            // Search for a matching route handler
-            const std::string routeKey = request.method + " " + request.path;
-            if (routes.find(routeKey) != routes.end())
+            else if (routes.find(routeKey) != routes.end())
             {
                 // Retrieve the handler function for the matched route and execute it
                 const auto route = routes[routeKey];
@@ -502,12 +513,17 @@ namespace ESP32WebServer
                 }
 
                 close(client_socket);
-
-                return;
             }
 
-            Serial.printf("No route found for path: %s\n", request.path.c_str());
-            close(client_socket);
+            else
+            {
+                // No route matched, return 404 Not Found
+                response.NotFound();
+                std::string header = response.getHeaders();
+                write(client_socket, header.c_str(), header.size());
+                write(client_socket, response.body.c_str(), response.body.size());
+                close(client_socket);
+            }
         }
 
         // Map of path to file path for static file serving
@@ -546,9 +562,9 @@ namespace ESP32WebServer
         // Map of "METHOD PATH" to handler function for dynamic routes
         std::map<std::string, void (*)(const Request &, Response &)> routes;
         void addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))
-    {
-        routes.insert({method + " " + path, handler});
-    }
+        {
+            routes.insert({method + " " + path, handler});
+        }
     };
 }
 #endif
