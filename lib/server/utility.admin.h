@@ -1,3 +1,8 @@
+// ESP32 MiniWebServer Framework - https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework
+// Copyright © 2026, Daniel Landau
+// MIT License
+
+// This is work in progress!
 
 #pragma once
 
@@ -103,87 +108,96 @@ namespace ESP32WebServer
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 Admin Panel</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --bg-color: #f4f7f6;
+            --bg-color: #f0f2f5;
             --card-bg: #ffffff;
-            --text-main: #333;
+            --text-main: #2c3e50;
             --primary: #3498db;
             --danger: #e74c3c;
-            --border-radius: 10px;
+            --border-radius: 12px;
         }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        h1 { margin: 0; font-size: 1.8rem; color: #2c3e50; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
         
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .card { background: var(--card-bg); padding: 25px; border-radius: var(--border-radius); box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .card h2 { margin-top: 0; font-size: 1.1rem; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
+        header { 
+            display: flex; justify-content: space-between; align-items: baseline; 
+            margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #ddd;
+        }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        .uptime-display { font-size: 0.9rem; color: #7f8c8d; font-weight: 500; }
+        .uptime-display i { color: var(--primary); margin-right: 5px; }
         
-        .info-group { margin: 15px 0; }
-        .label { display: block; font-size: 0.85rem; color: #95a5a6; }
-        .value { font-size: 1.2rem; font-weight: bold; color: var(--text-main); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; }
+        .card { background: var(--card-bg); padding: 25px; border-radius: var(--border-radius); box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; }
+        .card h2 { margin-top: 0; font-size: 1rem; color: #95a5a6; text-transform: uppercase; letter-spacing: 1.2px; display: flex; align-items: center; gap: 10px; }
+        .card h2 i { color: var(--primary); font-size: 1.2rem; }
+        
+        .info-group { margin: 20px 0; }
+        .label { display: block; font-size: 0.8rem; color: #bdc3c7; text-transform: uppercase; font-weight: bold; }
+        .value { font-size: 1.3rem; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
         
         .btn { 
-            display: inline-block; padding: 10px 20px; margin-top: 15px; 
+            display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; 
             background: var(--primary); color: white; text-decoration: none; 
-            border-radius: 5px; font-weight: 600; border: none; cursor: pointer;
-            transition: opacity 0.2s;
+            border-radius: 6px; font-weight: 600; border: none; cursor: pointer; transition: transform 0.1s, background 0.2s;
         }
-        .btn:hover { opacity: 0.8; }
+        .btn:hover { background: #2980b9; transform: translateY(-1px); }
         .btn-danger { background: var(--danger); }
+        .btn-danger:hover { background: #c0392b; }
 
-        .form-group { margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
-        input { width: 100%; padding: 8px; margin: 5px 0 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .form-group { margin-top: 15px; }
+        input { 
+            width: 100%; padding: 10px; margin: 8px 0 15px 0; 
+            border: 1px solid #dcdde1; border-radius: 6px; box-sizing: border-box; background: #f9f9f9;
+        }
+        input:focus { outline: none; border-color: var(--primary); background: #fff; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Admin Dashboard</h1>
-            <a href="/logout" class="btn btn-danger" style="margin-top:0">Logout</a>
+            <div class="header-left">
+                <h1>Admin Dashboard</h1>
+                <div class="uptime-display">
+                    <i class="fa-solid fa-clock"></i>Up: <span id="uptime-value">0h 0m 0s</span>
+                </div>
+            </div>
+            <a href="/logout" class="btn btn-danger"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
         </header>
 
         <div class="grid">
             <div class="card">
-                <h2>Network Connection</h2>
+                <h2><i class="fa-solid fa-wifi"></i> Network Connection</h2>
                 <div class="info-group">
-                    <span class="label">Connected to (SSID)</span>
-                    <div class="value" id="ssid-value">Loading...</div>
-                </div>
-                <div class="info-group">
-                    <span class="label">IP Address</span>
-                    <div class="value" id="ip-value">0.0.0.0</div>
-                </div>
-                <a href="/admin/change-wifi" class="btn">Change WiFi</a>
-            </div>
-
-            <div class="card">
-                <h2>Admin Credentials</h2>
-                <form action="/admin/update-auth" method="POST">
-                    <div class="info-group">
-                        <span class="label">Admin Username</span>
-                        <input type="text" name="admin_user" value="admin" required>
-                    </div>
-                    <div class="info-group">
-                        <span class="label">New Password</span>
-                        <input type="password" name="admin_pwd" placeholder="Leave empty to keep current">
-                    </div>
-                    <button type="submit" class="btn">Update Credentials</button>
-                </form>
-            </div>
-            
-            <div class="card">
-                <h2>System Status</h2>
-                <div class="info-group">
-                    <span class="label">Device Uptime</span>
-                    <div class="value" id="uptime-value">0h 0m 0s</div>
+                    <span class="label">SSID</span>
+                    <div class="value" id="ssid-value">---</div>
                 </div>
                 <div class="info-group">
                     <span class="label">Signal Strength</span>
-                    <div class="value" id="rssi-value">0 dBm</div>
+                    <div class="value"><i class="fa-solid fa-signal"></i> <span id="rssi-value">0</span> dBm</div>
                 </div>
+                <div class="info-group">
+                    <span class="label">IP Address</span>
+                    <div class="value" style="font-family: monospace; font-size: 1.1rem;" id="ip-value">0.0.0.0</div>
+                </div>
+                <a href="/admin/change-wifi" class="btn"><i class="fa-solid fa-gear"></i> Change WiFi</a>
+            </div>
+
+            <div class="card">
+                <h2><i class="fa-solid fa-user-shield"></i> Security</h2>
+                <form action="/admin/update-auth" method="POST">
+                    <div class="form-group">
+                        <label class="label">Admin Username</label>
+                        <input type="text" name="admin_user" placeholder="Username" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="label">New Password</label>
+                        <input type="password" name="admin_pwd" placeholder="Leave empty to keep current">
+                    </div>
+                    <button type="submit" class="btn"><i class="fa-solid fa-floppy-disk"></i> Update Auth</button>
+                </form>
             </div>
         </div>
     </div>
@@ -191,26 +205,27 @@ namespace ESP32WebServer
     <script>
         async function loadData() {
             try {
-                // Placeholder for real API call to /admin/config
-                // const res = await fetch('/admin/config');
+                // Later: const res = await fetch('/admin/config');
                 // const data = await res.json();
                 
                 const data = {
-                    ssid: "MyHomeNetwork_5G",
-                    ip: "192.168.1.42",
-                    uptime: "2d 4h 12m",
-                    rssi: "-65"
+                    ssid: "Lemur_Net_2.4G",
+                    ip: "192.168.178.105",
+                    uptime: "1d 14h 05m",
+                    rssi: "-58"
                 };
 
                 document.getElementById('ssid-value').innerText = data.ssid;
                 document.getElementById('ip-value').innerText = data.ip;
                 document.getElementById('uptime-value').innerText = data.uptime;
-                document.getElementById('rssi-value').innerText = data.rssi + " dBm";
+                document.getElementById('rssi-value').innerText = data.rssi;
             } catch (e) {
-                console.error("Load failed", e);
+                console.error("Fetch error", e);
             }
         }
         window.onload = loadData;
+        // Optional: Auto-refresh data every 10 seconds
+        setInterval(loadData, 10000);
     </script>
 </body>
 </html>
