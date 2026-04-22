@@ -21,6 +21,9 @@ This framework is a personal Project providing a MiniWebserver with dynamically 
 
 ## 📁 Project Structure
 
+- Just include the folder **lib/server/** and include to your main.cpp and routes.<name>.h as described.
+- Or use the compact version in **lib/compact**  and include to your main.cpp and routes.<name>.h as described.
+
 ```
 📦 ESP32 Mini WebServer Framework
 ├── 📁 src/
