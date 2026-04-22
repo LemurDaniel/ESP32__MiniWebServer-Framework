@@ -81,6 +81,33 @@ namespace ESP32WebServer
         return true;
     }
 
+    struct WiFiConfig
+    {
+        std::string ssid;
+        std::string password;
+        std::string signalStrength;
+        std::string ipAddress;
+    };
+    inline WiFiConfig getWiFiConfig()
+    {
+        const std::string wifiConfigPath = "/WiFiConfig.json";
+        JsonDocument wifiConfig = readJsonFile(wifiConfigPath);
+
+        WiFiConfig config;
+        config.ssid = wifiConfig["ssid"] | "Not Configured";
+        config.password = wifiConfig["password"] | "";
+
+        if(WiFi.status() == WL_CONNECTED) {
+            config.signalStrength = std::to_string(WiFi.RSSI());
+            config.ipAddress = std::to_string(WiFi.localIP());
+        } else {
+            config.signalStrength = wifiConfig["signalStrength"] | "0 dBm";
+            config.ipAddress = wifiConfig["ipAddress"] | " Not Connected";
+        }
+
+        return config;
+    }
+
     inline void setupWiFi()
     {
 

@@ -10,6 +10,8 @@
 #include <router.h>
 #include <string>
 
+#include <utility.wifi.h>
+
 namespace ESP32WebServer
 {
     inline void get_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
@@ -205,27 +207,19 @@ namespace ESP32WebServer
     <script>
         async function loadData() {
             try {
-                // Later: const res = await fetch('/admin/config');
-                // const data = await res.json();
+                const res = await fetch('/admin/config');
+                const json = await res.json();
                 
-                const data = {
-                    ssid: "Lemur_Net_2.4G",
-                    ip: "192.168.178.105",
-                    uptime: "1d 14h 05m",
-                    rssi: "-58"
-                };
-
-                document.getElementById('ssid-value').innerText = data.ssid;
-                document.getElementById('ip-value').innerText = data.ip;
-                document.getElementById('uptime-value').innerText = data.uptime;
-                document.getElementById('rssi-value').innerText = data.rssi;
+                document.getElementById('ssid-value').innerText = json.WiFi.SSID || "N/A";
+                document.getElementById('ip-value').innerText = json.WiFi.IPAddress || "";
+                document.getElementById('uptime-value').innerText = "TODO"; // TODO: Uptime in human-readable format
+                document.getElementById('rssi-value').innerText = json.WiFi.SignalStrength || "0 dBm";
             } catch (e) {
                 console.error("Fetch error", e);
             }
         }
         window.onload = loadData;
-        // Optional: Auto-refresh data every 10 seconds
-        setInterval(loadData, 10000);
+        setInterval(loadData, 1000);
     </script>
 </body>
 </html>
@@ -240,13 +234,26 @@ namespace ESP32WebServer
         get_AdminDashboard(req, res);
     }
 
+    inline void get_AdminConfig(Request const &req, Response &res)
+    {
+        ESP32WebServer::WiFiConfig wifiConfig = ESP32WebServer::getWiFiConfig();
+
+        JsonDocument configDoc;
+        configDoc["WiFi"]["SSID"] = wifiConfig.ssid;
+        configDoc["WiFi"]["Password"] = wifiConfig.password;
+        configDoc["WiFi"]["SignalStrength"] = wifiConfig.signalStrength;
+        configDoc["WiFi"]["IPAddress"] = wifiConfig.ipAddress;
+
+        res.json(configDoc);
+    }
+
     class AdminRouter : public ESP32WebServer::Router
     {
     public:
         AdminRouter()
         {
             add("GET", "/admin", get_AdminLogin);
-            // add("GET", "/admin/config", get_AdminConfig); TODO
+            add("GET", "/admin/config", get_AdminConfig);
             add("POST", "/admin/login", post_AdminLogin);
         }
     };

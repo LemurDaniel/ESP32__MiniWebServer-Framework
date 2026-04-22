@@ -113,7 +113,7 @@ namespace ESP32WebServer
                 Serial.println("Failed to start server");
                 return;
             }
-            
+
             is_running = true;
             Serial.println("Server started and listening for clients...");
 
@@ -159,18 +159,18 @@ namespace ESP32WebServer
         Serial.println(buffer);
         Serial.println("--------------------------");
 
+        // Search for a matching route handler
+        const std::string routeKey = request.method + " " + request.path;
+
         // Simple serving of a static file if path matches, otherwise look for dynamic route handlers
         if (file_responses.find(request.path) != file_responses.end())
         {
             response.file(file_responses[request.path]);
             serveFile(client_socket, response);
             close(client_socket);
-            return;
         }
 
-        // Search for a matching route handler
-        const std::string routeKey = request.method + " " + request.path;
-        if (routes.find(routeKey) != routes.end())
+        else if (routes.find(routeKey) != routes.end())
         {
             // Retrieve the handler function for the matched route and execute it
             const auto route = routes[routeKey];
@@ -187,11 +187,18 @@ namespace ESP32WebServer
                 write(client_socket, response.body.c_str(), response.body.size());
             }
 
-            return;
+            close(client_socket);
         }
 
-        Serial.printf("No route found for path: %s\n", request.path.c_str());
-        close(client_socket);
+        else
+        {
+            // No route matched, return 404 Not Found
+            response.NotFound();
+            std::string header = response.getHeaders();
+            write(client_socket, header.c_str(), header.size());
+            write(client_socket, response.body.c_str(), response.body.size());
+            close(client_socket);
+        }
     }
 
     void MiniServer::serveFile(int client_socket, Response &res)
