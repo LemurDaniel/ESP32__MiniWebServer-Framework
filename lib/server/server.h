@@ -2,8 +2,7 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
-#ifndef INCLUDED_HTTP_TCPSERVER_LINUX
-#define INCLUDED_HTTP_TCPSERVER_LINUX
+#pragma once
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +22,9 @@
 #include <map>
 
 #include <ArduinoJson-v7.4.3.h>
+
+#include <utility.wifi.h>
+#include <utility.admin.h>
 #include <router.h>
 
 namespace ESP32WebServer
@@ -76,4 +78,3 @@ namespace ESP32WebServer
         void addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res));
     };
 }
-#endif

@@ -177,6 +177,13 @@ namespace ESP32WebServer
             return *this;
         }
 
+        Response html(const std::string &htmlBody)
+        {
+            this->text(htmlBody);
+            this->header("Content-Type", "text/html; charset=utf-8");
+            return *this;
+        }
+
     private:
     };
 }

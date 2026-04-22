@@ -43,6 +43,9 @@ namespace ESP32WebServer
 
     WiFiClass MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
     {
+        // setupWiFi();
+        // return WiFi;
+
         WiFi.mode(WIFI_STA);
         WiFi.begin(ssid.c_str(), password.c_str());
 
@@ -110,8 +113,11 @@ namespace ESP32WebServer
                 Serial.println("Failed to start server");
                 return;
             }
+            
             is_running = true;
             Serial.println("Server started and listening for clients...");
+
+            this->registerRouter(ESP32WebServer::AdminRouter());
         }
 
         struct sockaddr_in client_addr;
@@ -148,6 +154,10 @@ namespace ESP32WebServer
         // Parse the raw HTTP request into a structured Request object
         Request request = Request::parse(buffer);
         Response response = Response();
+
+        Serial.println("\n\n\n--- Raw HTTP Request ---");
+        Serial.println(buffer);
+        Serial.println("--------------------------");
 
         // Simple serving of a static file if path matches, otherwise look for dynamic route handlers
         if (file_responses.find(request.path) != file_responses.end())

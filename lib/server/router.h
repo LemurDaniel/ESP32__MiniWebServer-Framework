@@ -15,7 +15,8 @@ namespace ESP32WebServer
     class Router
     {
     public:
-        struct Route {
+        struct Route
+        {
             std::string method;
             std::string path;
             void (*handler)(const ESP32WebServer::Request &, ESP32WebServer::Response &);
@@ -31,4 +32,5 @@ namespace ESP32WebServer
 
     private:
     };
+
 }
