@@ -10,6 +10,7 @@
 
 #include <WiFi.h>
 #include <Arduino.h>
+#include <DNSServer.h> // AP-Mode DNS
 #include <LittleFS.h>
 
 #include <arpa/inet.h>
@@ -52,10 +53,10 @@ namespace ESP32WebServer
         void addFile(const std::string &path, const std::string &file_path);
 
         // Register routes with method, path and handler function
-        void add(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res));
-        void get(const std::string &path, void (*handler)(const Request &req, Response &res));
-        void post(const std::string &path, void (*handler)(const Request &req, Response &res));
-        void put(const std::string &path, void (*handler)(const Request &req, Response &res));
+        void add(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler);
+        void get(const std::string &path, std::function<void(const Request&, Response&)> handler);
+        void post(const std::string &path, std::function<void(const Request&, Response&)> handler);
+        void put(const std::string &path, std::function<void(const Request&, Response&)> handler);
         void registerRouter(const ESP32WebServer::Router &router);
 
     private:
@@ -66,15 +67,17 @@ namespace ESP32WebServer
         void closeServer();
         int startServer();
         int is_running = false;
+        
+        // DNS for AP Mode
+        DNSServer dnsServer;
 
         void handleClient(int client_socket);
 
         // Map of path to file path for static file serving
-        std::map<std::string, std::string> file_responses;
         void serveFile(int client_socket, Response &res);
 
         // Map of "METHOD PATH" to handler function for dynamic routes
-        std::map<std::string, void (*)(const Request &, Response &)> routes;
-        void addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res));
+        std::map<std::string, std::function<void(const Request&, Response&)>> routes;
+        void addRoute(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler);
     };
 }

@@ -93,6 +93,12 @@ namespace ESP32WebServer
             return 1;
         }
 
+        // Start DNS server for AP mode
+        if (isApMode())
+        {
+            dnsServer.start(53, "esp32.locsl", WiFi.softAPIP());
+        }
+
         return 0;
     }
 
@@ -162,15 +168,7 @@ namespace ESP32WebServer
         // Search for a matching route handler
         const std::string routeKey = request.method + " " + request.path;
 
-        // Simple serving of a static file if path matches, otherwise look for dynamic route handlers
-        if (file_responses.find(request.path) != file_responses.end())
-        {
-            response.file(file_responses[request.path]);
-            serveFile(client_socket, response);
-            close(client_socket);
-        }
-
-        else if (routes.find(routeKey) != routes.end())
+        if (routes.find(routeKey) != routes.end())
         {
             // Retrieve the handler function for the matched route and execute it
             const auto route = routes[routeKey];
@@ -237,12 +235,6 @@ namespace ESP32WebServer
      * Serve index or handle GET/POST requests:
      *
      **/
-    void MiniServer::addFile(const std::string &path, const std::string &file_path)
-    {
-        Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
-        file_responses.insert({path, file_path});
-    }
-
     void MiniServer::index(const std::string &index_path)
     {
         addFile("/", index_path);
@@ -250,27 +242,38 @@ namespace ESP32WebServer
         addFile("/index.html", index_path);
     }
 
-    void MiniServer::addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))
+    void MiniServer::addRoute(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler)
     {
         routes.insert({method + " " + path, handler});
     }
 
-    void MiniServer::add(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))
+    void MiniServer::addFile(const std::string &path, const std::string &file_path)
+    {
+        Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
+
+        auto handler = [file_path](const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+        {
+            res.file(file_path);
+        };
+        addRoute("GET", path, handler);
+    }
+
+    void MiniServer::add(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler)
     {
         addRoute(method, path, handler);
     }
 
-    void MiniServer::get(const std::string &path, void (*handler)(const Request &req, Response &res))
+    void MiniServer::get(const std::string &path, std::function<void(const Request&, Response&)> handler)
     {
         addRoute("GET", path, handler);
     }
 
-    void MiniServer::post(const std::string &path, void (*handler)(const Request &req, Response &res))
+    void MiniServer::post(const std::string &path, std::function<void(const Request&, Response&)> handler)
     {
         addRoute("POST", path, handler);
     }
 
-    void MiniServer::put(const std::string &path, void (*handler)(const Request &req, Response &res))
+    void MiniServer::put(const std::string &path, std::function<void(const Request&, Response&)> handler)
     {
         addRoute("PUT", path, handler);
     }
