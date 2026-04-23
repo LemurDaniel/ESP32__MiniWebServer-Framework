@@ -107,6 +107,7 @@ namespace ESP32WebServer
         std::string dashboardPage = R"html(
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -121,52 +122,259 @@ namespace ESP32WebServer
             --danger: #e74c3c;
             --border-radius: 12px;
         }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        
-        header { 
-            display: flex; justify-content: space-between; align-items: baseline; 
-            margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #ddd;
-        }
-        .header-left { display: flex; align-items: center; gap: 15px; }
-        .uptime-display { font-size: 0.9rem; color: #7f8c8d; font-weight: 500; }
-        .uptime-display i { color: var(--primary); margin-right: 5px; }
-        
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; }
-        .card { background: var(--card-bg); padding: 25px; border-radius: var(--border-radius); box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; }
-        .card h2 { margin-top: 0; font-size: 1rem; color: #95a5a6; text-transform: uppercase; letter-spacing: 1.2px; display: flex; align-items: center; gap: 10px; }
-        .card h2 i { color: var(--primary); font-size: 1.2rem; }
-        
-        .info-group { margin: 20px 0; }
-        .label { display: block; font-size: 0.8rem; color: #bdc3c7; text-transform: uppercase; font-weight: bold; }
-        .value { font-size: 1.3rem; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
-        
-        .btn { 
-            display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; 
-            background: var(--primary); color: white; text-decoration: none; 
-            border-radius: 6px; font-weight: 600; border: none; cursor: pointer; transition: transform 0.1s, background 0.2s;
-        }
-        .btn:hover { background: #2980b9; transform: translateY(-1px); }
-        .btn-danger { background: var(--danger); }
-        .btn-danger:hover { background: #c0392b; }
 
-        .form-group { margin-top: 15px; }
-        input { 
-            width: 100%; padding: 10px; margin: 8px 0 15px 0; 
-            border: 1px solid #dcdde1; border-radius: 6px; box-sizing: border-box; background: #f9f9f9;
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
         }
-        input:focus { outline: none; border-color: var(--primary); background: #fff; }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .uptime-display {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+
+        .uptime-display i {
+            color: var(--primary);
+            margin-right: 5px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            position: relative;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 1rem;
+            color: #95a5a6;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h2 i {
+            color: var(--primary);
+            font-size: 1.2rem;
+        }
+
+        .info-group {
+            margin: 20px 0;
+        }
+
+        .label {
+            display: block;
+            font-size: 0.8rem;
+            color: #bdc3c7;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .value {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            background: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .form-group {
+            margin-top: 15px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0 15px 0;
+            border: 1px solid #dcdde1;
+            border-radius: 6px;
+            box-sizing: border-box;
+            background: #f9f9f9;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: #fff;
+        }
+
         select {
-            width: 100%; padding: 10px; margin: 8px 0 15px 0;
-            border: 1px solid #dcdde1; border-radius: 6px; box-sizing: border-box;
-            background: #f9f9f9; font-size: 1rem; color: var(--text-main); cursor: pointer;
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0 15px 0;
+            border: 1px solid #dcdde1;
+            border-radius: 6px;
+            box-sizing: border-box;
+            background: #f9f9f9;
+            font-size: 1rem;
+            color: var(--text-main);
+            cursor: pointer;
         }
-        select:focus { outline: none; border-color: var(--primary); background: #fff; }
-        #wifi-form { margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; display: none; }
-        .btn-row { display: flex; gap: 10px; margin-top: 5px; }
-        .btn-sm { padding: 8px 14px; font-size: 0.85rem; }
+
+        select:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: #fff;
+        }
+
+        #wifi-form {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            display: none;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 0.85rem;
+        }
+
+        .btn-secondary {
+            background: #7f8c8d;
+        }
+
+        .btn-secondary:hover {
+            background: #636e72;
+        }
+
+        .btn-success {
+            background: #27ae60;
+        }
+
+        .btn-success:hover {
+            background: #219a52;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 35px 30px 25px;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            animation: pop-in 0.2s ease;
+        }
+
+        @keyframes pop-in {
+            from {
+                transform: scale(0.85);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .modal-icon {
+            font-size: 2.8rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        .modal h3 {
+            margin: 0 0 10px;
+            font-size: 1.25rem;
+            color: var(--text-main);
+        }
+
+        .modal p {
+            color: #7f8c8d;
+            font-size: 0.95rem;
+            margin: 0 0 25px;
+        }
+
+        .modal .btn-row {
+            justify-content: center;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -176,7 +384,11 @@ namespace ESP32WebServer
                     <i class="fa-solid fa-clock"></i>Up: <span id="uptime-value">0h 0m 0s</span>
                 </div>
             </div>
-            <a href="/logout" class="btn btn-danger"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+            <div style="display:flex; gap:10px;">
+                <button onclick="confirmRestart()" class="btn btn-success"><i class="fa-solid fa-power-off"></i> Restart
+                    Device</button>
+                <a href="/logout" class="btn btn-danger"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+            </div>
         </header>
 
         <div class="grid">
@@ -187,8 +399,12 @@ namespace ESP32WebServer
                     <div class="value" id="ssid-value">---</div>
                 </div>
                 <div class="info-group">
+                    <span class="label">Password</span>
+                    <div class="password" id="password-value">---</div>
+                </div>
+                <div class="info-group">
                     <span class="label">Signal Strength</span>
-                    <div class="value"><i class="fa-solid fa-signal"></i> <span id="rssi-value">0</span> dBm</div>
+                    <div class="value"><i class="fa-solid fa-signal"></i> <span id="rssi-value">0</span></div>
                 </div>
                 <div class="info-group">
                     <span class="label">IP Address</span>
@@ -204,11 +420,13 @@ namespace ESP32WebServer
                     </div>
                     <div class="form-group">
                         <label class="label">Password</label>
-                        <input type="password" id="wifi-password" placeholder="WiFi Password">
+                        <input type="text" id="wifi-password" placeholder="WiFi Password">
                     </div>
                     <div class="btn-row">
-                        <button onclick="postWiFiConfig()" class="btn btn-sm"><i class="fa-solid fa-floppy-disk"></i> Save</button>
-                        <button onclick="scanWiFi()" id="btnScanWiFi"  class="btn btn-sm" style="background:#7f8c8d;"><i class="fa-solid fa-rotate"></i> Rescan</button>
+                        <button onclick="postWiFiConfig()" class="btn btn-sm"><i class="fa-solid fa-floppy-disk"></i>
+                            Save</button>
+                        <button onclick="scanWiFi()" id="btnScanWiFi" class="btn btn-sm" style="background:#7f8c8d;"><i
+                                class="fa-solid fa-rotate"></i> Rescan</button>
                     </div>
                 </div>
             </div>
@@ -230,7 +448,47 @@ namespace ESP32WebServer
         </div>
     </div>
 
+    <!-- WiFi saved popup -->
+    <div class="modal-overlay" id="modal-wifi-saved">
+        <div class="modal">
+            <div class="modal-icon"><i class="fa-solid fa-circle-check"></i></div>
+            <h3>WiFi gespeichert</h3>
+            <p>Die neue WLAN-Verbindung wird erst nach einem Neustart aktiv.</p>
+            <div class="btn-row">
+                <button onclick="closeModal('modal-wifi-saved')" class="btn btn-secondary btn-sm">Später</button>
+                <button onclick="doRestart()" class="btn btn-sm"><i class="fa-solid fa-power-off"></i> Jetzt
+                    neustarten</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart confirm popup -->
+    <div class="modal-overlay" id="modal-restart">
+        <div class="modal">
+            <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Gerät neustarten?</h3>
+            <p>Der ESP32 wird neu gestartet. Die Verbindung wird kurz unterbrochen.</p>
+            <div class="btn-row">
+                <button onclick="closeModal('modal-restart')" class="btn btn-secondary btn-sm">Abbrechen</button>
+                <button onclick="doRestart()" class="btn btn-danger btn-sm"><i class="fa-solid fa-power-off"></i>
+                    Neustarten</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function openModal(id) {
+            document.getElementById(id).classList.add('visible');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('visible');
+        }
+
+        function confirmRestart() {
+            openModal('modal-restart');
+        }
+
         function toggleWiFiForm() {
             const form = document.getElementById('wifi-form');
             const visible = form.style.display === 'block';
@@ -244,6 +502,7 @@ namespace ESP32WebServer
             if (scanWiFiRunning) return;
             scanWiFiRunning = true;
 
+            const currentSSID = document.getElementById('ssid-value').innerText;
             const select = document.getElementById('wifi-ssid');
 
             select.innerHTML = '<option value="">-- Scanning... --</option>';
@@ -252,9 +511,11 @@ namespace ESP32WebServer
                 const json = await res.json();
 
                 console.log("Available networks:", json.networks);
-                select.innerHTML = json.networks.map(e =>
-                    `<option value="${e.SSID}">(${e.SignalStrength}) ${e.SSID}</option>`
-                ).join('');
+                select.innerHTML = json.networks
+                    .filter(e => e.SSID != currentSSID)
+                    .map(e =>
+                        `<option value="${e.SSID}">(${e.SignalStrength}) ${e.SSID}</option>`
+                    ).join('');
             } catch (e) {
                 console.error("Scan error", e);
                 select.innerHTML = '<option value="">-- Scan failed --</option>';
@@ -274,13 +535,21 @@ namespace ESP32WebServer
                 body: JSON.stringify({ ssid, password })
             });
             document.getElementById('wifi-form').style.display = 'none';
+            openModal('modal-wifi-saved');
+        }
+
+        async function doRestart() {
+            closeModal('modal-wifi-saved');
+            closeModal('modal-restart');
+            await fetch('/admin/restart', { method: 'POST' }).catch(() => { });
         }
         async function loadWiFiConfig() {
             try {
                 const res = await fetch('/admin/wifi');
                 const json = await res.json();
-                
+
                 document.getElementById('ssid-value').innerText = json.SSID || "N/A";
+                document.getElementById('password-value').innerText = json.Password || "Not Set";
                 document.getElementById('ip-value').innerText = json.IPAddress || "";
                 document.getElementById('rssi-value').innerText = json.SignalStrength || "0 dBm";
             } catch (e) {
@@ -291,6 +560,7 @@ namespace ESP32WebServer
         setInterval(loadWiFiConfig, 10000);
     </script>
 </body>
+
 </html>
 )html";
 
@@ -311,9 +581,8 @@ namespace ESP32WebServer
         doc["SSID"] = wifiConfig.ssid;
         doc["SignalStrength"] = wifiConfig.signalStrength;
         doc["IPAddress"] = wifiConfig.ipAddress;
+        doc["Password"] = wifiConfig.password;
 
-        // TODO REMOVE THIS: CORS only for testing
-        res.header("Access-Control-Allow-Origin", "*");
         res.json(doc);
     }
 
@@ -331,15 +600,11 @@ namespace ESP32WebServer
             obj["IPAddress"] = opt.ipAddress;
         }
 
-        // TODO REMOVE THIS: CORS only for testing
-        res.header("Access-Control-Allow-Origin", "*");
         res.json(doc);
     }
 
     inline void post_AdminWiFiConfig(Request const &req, Response &res)
     {
-        Response response;
-
         if (req.jsonBody.isNull())
         {
             res.status(400).text("Invalid JSON");
@@ -348,7 +613,7 @@ namespace ESP32WebServer
 
         if (!req.jsonBody["ssid"].is<std::string>() || !req.jsonBody["password"].is<std::string>())
         {
-            res.status(400).text("Invalid ssid or password format");
+            res.status(400).text("Missing ssid or password");
             return;
         }
 
@@ -357,8 +622,14 @@ namespace ESP32WebServer
 
         ESP32WebServer::setWiFiConfig(ssid, password);
 
-        // TODO REMOVE THIS: CORS only for testing
-        res.header("Access-Control-Allow-Origin", "*").OK().text("WiFi configuration updated to " + ssid + "Device needs to be restarted.");
+        res.OK().text("WiFi config updated");
+    }
+
+    inline void post_AdminRestart(Request const &req, Response &res)
+    {
+        res.OK().text("Restarting...");
+        delay(1000);
+        ESP.restart();
     }
 
     class AdminRouter : public ESP32WebServer::Router
@@ -372,6 +643,7 @@ namespace ESP32WebServer
             add("GET", "/admin/wifi", get_AdminWiFiConfig);
             add("GET", "/admin/wifi/scan", get_AdminWiFiScan);
             add("POST", "/admin/wifi", post_AdminWiFiConfig);
+            add("POST", "/admin/restart", post_AdminRestart);   
         }
     };
 }

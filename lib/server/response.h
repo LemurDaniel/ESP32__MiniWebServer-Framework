@@ -30,10 +30,10 @@ namespace ESP32WebServer
         size_t fileSize;
         std::string filePath;
 
-        std::string header(const std::string &key, const std::string &value)
+        Response header(const std::string &key, const std::string &value)
         {
             headers[key] = value;
-            return value;
+            return *this;
         }
 
         std::string getHeaders()
@@ -73,7 +73,7 @@ namespace ESP32WebServer
         {
             if (this->body.empty())
             {
-                this->body = "OK";
+                this->text("OK");
             }
             this->status_code = 200;
             return *this;
@@ -83,7 +83,7 @@ namespace ESP32WebServer
         {
             if (this->body.empty())
             {
-                this->body = "Not Found";
+                this->text("Not Found");
             }
             this->status_code = 404;
             return *this;
@@ -93,7 +93,7 @@ namespace ESP32WebServer
         {
             if (this->body.empty())
             {
-                this->body = "Internal Server Error";
+                this->text("Internal Server Error");
             }
             this->status_code = 500;
             return *this;
