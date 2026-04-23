@@ -10,7 +10,6 @@
 
 #include <WiFi.h>
 #include <Arduino.h>
-#include <DNSServer.h> // AP-Mode DNS
 #include <LittleFS.h>
 
 #include <arpa/inet.h>
@@ -40,7 +39,9 @@ namespace ESP32WebServer
         ~MiniServer();
 
         // Connect to WiFi network via SSID (Name of WiFi) and password
+        // If not used, the server will start in AP mode with SSID "ESP32_MiniWebServer" and a default admin page for WiFi configuration
         WiFiClass connectWiFi(const std::string &ssid, const std::string &password);
+        void clearWiFi();
 
         // This is a blocking call that listens for incoming client connections and handles them
         // May be executed on a different Thread or Core to avoid blocking the main loop
@@ -68,9 +69,6 @@ namespace ESP32WebServer
         int startServer();
         int is_running = false;
         
-        // DNS for AP Mode
-        DNSServer dnsServer;
-
         void handleClient(int client_socket);
 
         // Map of path to file path for static file serving

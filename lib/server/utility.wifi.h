@@ -10,77 +10,12 @@
 #include <WiFi.h>
 #include <LittleFS.h>
 
-#include <ArduinoJson-v7.4.3.h>
+#include <utility.file.h>
+
+#define WIFI_CONFIG_FILE "/WiFiConfig.json"
 
 namespace ESP32WebServer
 {
-
-    inline bool fileExists(const std::string &file_path)
-    {
-        if (!LittleFS.begin(true)) // Format if mount fails
-        {
-            Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
-            return false;
-        }
-
-        return LittleFS.exists(file_path.c_str());
-    }
-
-    inline JsonDocument readJsonFile(const std::string &file_path)
-    {
-        if (!fileExists(file_path))
-        {
-            Serial.printf("❌ CRITICAL: JSON file %s not found!\n", file_path.c_str());
-            return JsonDocument();
-        }
-
-        File file = LittleFS.open(file_path.c_str(), "r");
-        if (!file)
-        {
-            Serial.printf("❌ CRITICAL: Failed to open JSON file %s for reading!\n", file_path.c_str());
-            return JsonDocument();
-        }
-
-        size_t size = file.size();
-        std::string jsonStr(size, '\0');
-        file.readBytes(&jsonStr[0], size);
-        file.close();
-
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, jsonStr);
-        if (error)
-        {
-            Serial.printf("❌ CRITICAL: Failed to parse JSON file %s! Error: %s\n", file_path.c_str(), error.c_str());
-            return JsonDocument();
-        }
-
-        return doc;
-    }
-
-    inline bool writeJsonFile(const std::string &file_path, const JsonDocument &doc)
-    {
-        if (!LittleFS.begin(true)) // Format if mount fails
-        {
-            Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
-            return false;
-        }
-
-        File file = LittleFS.open(file_path.c_str(), "w");
-        if (!file)
-        {
-            Serial.printf("❌ CRITICAL: Failed to open JSON file %s for writing!\n", file_path.c_str());
-            return false;
-        }
-
-        char jsonStr[512];
-        serializeJson(doc, jsonStr, sizeof(jsonStr));
-
-        file.print(jsonStr);
-        file.close();
-
-        return true;
-    }
-
     struct WiFiConfig
     {
         std::string ssid;
@@ -88,19 +23,54 @@ namespace ESP32WebServer
         std::string signalStrength;
         std::string ipAddress;
     };
+
+    inline int isApMode()
+    {
+        return WiFi.getMode() == WIFI_AP;
+    }
+
+    inline int isWiFiConnected()
+    {
+        return WiFi.status() == WL_CONNECTED;
+    }
+    
+    inline void clearWiFiConfig()
+    {
+        removeFile(WIFI_CONFIG_FILE);
+    }
+
+    inline void setWiFiConfig(const std::string &ssid, const std::string &password)
+    {
+        JsonDocument wifiConfig;
+        wifiConfig["ssid"] = ssid;
+        wifiConfig["password"] = password;
+        writeJsonFile(WIFI_CONFIG_FILE, wifiConfig);
+    }
+
     inline WiFiConfig getWiFiConfig()
     {
-        const std::string wifiConfigPath = "/WiFiConfig.json";
-        JsonDocument wifiConfig = readJsonFile(wifiConfigPath);
+        JsonDocument wifiConfig;
+
+        if (fileExists(WIFI_CONFIG_FILE))
+        {
+            wifiConfig = readJsonFile(WIFI_CONFIG_FILE);
+        }
+        else
+        {
+            Serial.println("No WiFi config file found, returning default config...");
+        }
 
         WiFiConfig config;
         config.ssid = wifiConfig["ssid"] | "Not Configured";
         config.password = wifiConfig["password"] | "";
 
-        if(WiFi.status() == WL_CONNECTED) {
+        if (WiFi.status() == WL_CONNECTED)
+        {
             config.signalStrength = std::to_string(WiFi.RSSI());
             config.ipAddress = std::to_string(WiFi.localIP());
-        } else {
+        }
+        else
+        {
             config.signalStrength = wifiConfig["signalStrength"] | "0 dBm";
             config.ipAddress = wifiConfig["ipAddress"] | " Not Connected";
         }
@@ -108,52 +78,76 @@ namespace ESP32WebServer
         return config;
     }
 
-    inline void setupWiFi()
+    inline void setupWiFi(const std::string &ssid, const std::string &password)
     {
 
-        const std::string wifiConfigPath = "/WiFiConfig.json";
-
         /**
-         * Checks for the presence of a WiFi config File.
-         * If not found, ESP32 will start in AP mode with SSID "ESP32_MiniWebServer".
-         * - An admin page will be available at http://<ESP32_IP>/admin
-         * - Credentials and SSID can be set up on the admin page
-         * - Default Password for admin:
-         *      Username: admin
-         *      Password: admin
+         * If a password and SSID are provided:
+         * - ESP32 will attempt to connect to the WiFi network using the provided credentials.
          *
-         * If found, ESP32 will attempt to connect to the WiFi network using the credentials in the file.
-         * - The admin page will still be accessible with the user-provided credentials.
-         * - The WiFi config and credentials will be stored in the config file on the ESP32
+         * If no password and SSID are provided:
+         * - ESP32 will check if a WiFi config file exists on the device with valid
+         *      If an WiFiConfig file exists
+         *      - will attempt to connect to the WiFi network using the credentials in the file
+         *
+         *      else
+         *      - will start in AP mode with SSID "ESP32_MiniWebServer".
+         *        Default Credentials for admin page:
+         *          Username: admin
+         *          Password: admin
+         *
          **/
 
-        if (fileExists(wifiConfigPath))
+        std::string ssidToUse = ssid;
+        std::string passwordToUse = password;
+
+        if (WiFi.status() == WL_CONNECTED)
         {
-            JsonDocument wifiConfig = readJsonFile(wifiConfigPath);
-            std::string ssid = wifiConfig["ssid"] | "";
-            std::string password = wifiConfig["password"] | "";
-
-            WiFi.begin(ssid.c_str(), password.c_str());
-
-            Serial.println();
-            Serial.print("Connecting to WiFi...");
-            while (WiFi.status() != WL_CONNECTED)
-            {
-                delay(500);
-                Serial.print(".");
-            }
-
-            Serial.println("Connected!");
-            Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
-            Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
-            Serial.println();
-
+            Serial.println("Already connected to WiFi, skipping setup.");
             return;
         }
 
-        WiFi.mode(WIFI_AP);
-        WiFi.softAP("ESP32_MiniWebServer");
-        Serial.println(WiFi.softAPIP()); // TODO: User-Friendly DNS-based access to admin page (e.g. http://esp32.local)
-    }
+        if (fileExists(WIFI_CONFIG_FILE) && ssidToUse.empty() && passwordToUse.empty())
+        {
+            Serial.println("WiFi config file found, attempting to connect using stored credentials...");
 
+            WiFiConfig wifiConfig = getWiFiConfig();
+            ssidToUse = wifiConfig.ssid;
+            passwordToUse = wifiConfig.password;
+        }
+        else if (ssidToUse.empty() && passwordToUse.empty())
+        {
+            Serial.println("No WiFi credentials provided and no config file found, starting in AP mode...");
+
+            WiFi.mode(WIFI_AP);
+            WiFi.softAP("ESP32_MiniWebServer");
+            Serial.printf("Local IP: %s\n", WiFi.softAPIP().toString().c_str());
+            return;
+        }
+        else
+        {
+            Serial.println("WiFi credentials provided, writing to config file...");
+            setWiFiConfig(ssidToUse, passwordToUse);
+        }
+
+        WiFi.begin(ssidToUse.c_str(), passwordToUse.c_str());
+
+        Serial.println();
+        Serial.printf("SSID: %s\n", ssidToUse.c_str());
+        Serial.print("Connecting to WiFi...");
+        while (WiFi.status() != WL_CONNECTED)
+        {
+            delay(500);
+            Serial.print(".");
+        }
+
+        Serial.println("Connected!");
+        Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
+        Serial.println();
+    }
+    inline void setupWiFi()
+    {
+        setupWiFi("", "");
+    }
 }

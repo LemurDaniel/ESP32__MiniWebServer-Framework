@@ -318,23 +318,13 @@ namespace ESP32WebServer
         // Connect to WiFi network via SSID (Name of WiFi) and password
         WiFiClass connectWiFi(const std::string &ssid, const std::string &password)
         {
-            WiFi.mode(WIFI_STA);
-            WiFi.begin(ssid.c_str(), password.c_str());
-
-            Serial.println();
-            Serial.print("Connecting to WiFi...");
-            while (WiFi.status() != WL_CONNECTED)
-            {
-                delay(500);
-                Serial.print(".");
-            }
-
-            Serial.println("Connected!");
-            Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
-            Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
-            Serial.println();
-
+            setupWiFi(ssid, password);
             return WiFi;
+        }
+
+        void clearWiFi()
+        {
+            clearWiFiConfig();
         }
 
         // This is a blocking call that listens for incoming client connections and handles them
@@ -378,30 +368,33 @@ namespace ESP32WebServer
             addFile("/index.html", index_path);
         }
 
-        // Add a static file response for a specific path
         void addFile(const std::string &path, const std::string &file_path)
         {
             Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
-            file_responses.insert({path, file_path});
+
+            auto handler = [file_path](const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+            {
+                res.file(file_path);
+            };
+            addRoute("GET", path, handler);
         }
 
-        // Register routes with method, path and handler function
-        void add(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))
+        void add(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler)
         {
             addRoute(method, path, handler);
         }
 
-        void get(const std::string &path, void (*handler)(const Request &req, Response &res))
+        void get(const std::string &path, std::function<void(const Request &, Response &)> handler)
         {
             addRoute("GET", path, handler);
         }
 
-        void post(const std::string &path, void (*handler)(const Request &req, Response &res))
+        void post(const std::string &path, std::function<void(const Request &, Response &)> handler)
         {
             addRoute("POST", path, handler);
         }
 
-        void put(const std::string &path, void (*handler)(const Request &req, Response &res))
+        void put(const std::string &path, std::function<void(const Request &, Response &)> handler)
         {
             addRoute("PUT", path, handler);
         }
@@ -426,6 +419,14 @@ namespace ESP32WebServer
         }
         int startServer()
         {
+            // Start WiFi setup, when 'connectWiFi' wasn't explicitly called before starting the server
+            // Server starts automatically on the first call to 'listenClient', so this ensures WiFi is set up before accepting any clients.
+            if (!isWiFiConnected())
+            {
+                Serial.println("Starting WiFi setup...");
+                setupWiFi();
+            }
+
             server_socket = socket(AF_INET, SOCK_STREAM, 0);
             if (server_socket < 0)
             {
@@ -453,10 +454,10 @@ namespace ESP32WebServer
             }
 
             return 0;
-        };
+        }
         int is_running = false;
 
-        void MiniServer::handleClient(int client_socket)
+        void handleClient(int client_socket)
         {
             Serial.println("\n\n\nHandling client request...");
 
@@ -522,8 +523,6 @@ namespace ESP32WebServer
             }
         }
 
-        // Map of path to file path for static file serving
-        std::map<std::string, std::string> file_responses;
         void serveFile(int client_socket, Response &res)
         {
 
@@ -556,8 +555,8 @@ namespace ESP32WebServer
         }
 
         // Map of "METHOD PATH" to handler function for dynamic routes
-        std::map<std::string, void (*)(const Request &, Response &)> routes;
-        void addRoute(const std::string &method, const std::string &path, void (*handler)(const Request &req, Response &res))
+        std::map<std::string, std::function<void(const Request &, Response &)>> routes;
+        void addRoute(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler)
         {
             routes.insert({method + " " + path, handler});
         }

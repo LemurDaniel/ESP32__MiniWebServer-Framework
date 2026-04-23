@@ -101,6 +101,7 @@ namespace ESP32WebServer
         res.html(adminPage);
     }
 
+    // <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     inline void get_AdminDashboard(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
         std::string dashboardPage = R"html(
@@ -110,7 +111,7 @@ namespace ESP32WebServer
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 Admin Panel</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <style>
         :root {
             --bg-color: #f0f2f5;
@@ -219,7 +220,7 @@ namespace ESP32WebServer
             }
         }
         window.onload = loadData;
-        setInterval(loadData, 1000);
+        setInterval(loadData, 10000);
     </script>
 </body>
 </html>

@@ -43,30 +43,25 @@ namespace ESP32WebServer
 
     WiFiClass MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
     {
-        // setupWiFi();
-        // return WiFi;
-
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid.c_str(), password.c_str());
-
-        Serial.println();
-        Serial.print("Connecting to WiFi...");
-        while (WiFi.status() != WL_CONNECTED)
-        {
-            delay(500);
-            Serial.print(".");
-        }
-
-        Serial.println("Connected!");
-        Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
-        Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
-        Serial.println();
-
+        setupWiFi(ssid, password);
         return WiFi;
+    }
+
+    void MiniServer::clearWiFi()
+    {
+        clearWiFiConfig();
     }
 
     int MiniServer::startServer()
     {
+        // Start WiFi setup, when 'connectWiFi' wasn't explicitly called before starting the server
+        // Server starts automatically on the first call to 'listenClient', so this ensures WiFi is set up before accepting any clients.
+        if (!isWiFiConnected())
+        {
+            Serial.println("Starting WiFi setup...");
+            setupWiFi();
+        }
+
         server_socket = socket(AF_INET, SOCK_STREAM, 0);
         if (server_socket < 0)
         {
@@ -91,12 +86,6 @@ namespace ESP32WebServer
         {
             Serial.println("Failed to listen on socket");
             return 1;
-        }
-
-        // Start DNS server for AP mode
-        if (isApMode())
-        {
-            dnsServer.start(53, "esp32.locsl", WiFi.softAPIP());
         }
 
         return 0;
@@ -125,7 +114,7 @@ namespace ESP32WebServer
 
             this->registerRouter(ESP32WebServer::AdminRouter());
         }
-
+        
         struct sockaddr_in client_addr;
         socklen_t len = sizeof(client_addr);
 
@@ -136,15 +125,11 @@ namespace ESP32WebServer
             return;
         }
 
-        Serial.printf("Client connected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
         handleClient(client_socket);
     }
 
     void MiniServer::handleClient(int client_socket)
     {
-        Serial.println("\n\n\nHandling client request...");
-
         char buffer[1024];
 
         int bytesRead = read(client_socket, buffer, sizeof(buffer) - 1);
@@ -242,7 +227,7 @@ namespace ESP32WebServer
         addFile("/index.html", index_path);
     }
 
-    void MiniServer::addRoute(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler)
+    void MiniServer::addRoute(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler)
     {
         routes.insert({method + " " + path, handler});
     }
@@ -258,22 +243,22 @@ namespace ESP32WebServer
         addRoute("GET", path, handler);
     }
 
-    void MiniServer::add(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler)
+    void MiniServer::add(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler)
     {
         addRoute(method, path, handler);
     }
 
-    void MiniServer::get(const std::string &path, std::function<void(const Request&, Response&)> handler)
+    void MiniServer::get(const std::string &path, std::function<void(const Request &, Response &)> handler)
     {
         addRoute("GET", path, handler);
     }
 
-    void MiniServer::post(const std::string &path, std::function<void(const Request&, Response&)> handler)
+    void MiniServer::post(const std::string &path, std::function<void(const Request &, Response &)> handler)
     {
         addRoute("POST", path, handler);
     }
 
-    void MiniServer::put(const std::string &path, std::function<void(const Request&, Response&)> handler)
+    void MiniServer::put(const std::string &path, std::function<void(const Request &, Response &)> handler)
     {
         addRoute("PUT", path, handler);
     }
