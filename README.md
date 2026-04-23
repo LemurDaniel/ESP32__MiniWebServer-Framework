@@ -22,7 +22,6 @@ This framework is a personal Project providing a MiniWebserver with dynamically 
 ## 📁 Project Structure
 
 - Just include the folder **lib/server/** and include to your main.cpp and routes.<name>.h as described.
-- Or use the compact folder **lib/compact**  and include to your main.cpp and routes.<name>.h as described.
 
 ```
 📦 ESP32 Mini WebServer Framework
@@ -37,8 +36,9 @@ This framework is a personal Project providing a MiniWebserver with dynamically 
 │       ├── 🛤️ router.h             # Routing engine
 │       ├── 📥 request.h            # HTTP request handling
 │       ├── 📤 response.h           # HTTP response handling
-│       ├── 🔐 utility.admin.h           # Admin Dashboard
-│       ├── 🛜 utility.wifi.h           # WiFi utility
+│       ├── 🔐 utility.admin.h      # Admin Dashboard
+│       ├── 🛜 utility.wifi.h       # WiFi utility
+│       ├── 📂 utility.file.h       # File utility
 │       └── 📋 ArduinoJson-v7.4.3.h # JSON library
 ├── 📁 data/
 │   └── 📁 web/

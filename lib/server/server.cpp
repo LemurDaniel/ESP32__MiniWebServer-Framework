@@ -43,7 +43,7 @@ namespace ESP32WebServer
 
     WiFiClass MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
     {
-        setupWiFi(ssid, password);
+        setupWiFi(ssid, password, true);
         return WiFi;
     }
 

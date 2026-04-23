@@ -168,7 +168,7 @@ namespace ESP32WebServer
 
         Response json(JsonDocument jsonBody)
         {
-            char body[512];
+            char body[2048];
             serializeJson(jsonBody, body, sizeof(body));
 
             this->body = body;

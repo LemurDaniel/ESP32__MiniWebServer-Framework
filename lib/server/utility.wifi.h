@@ -10,6 +10,9 @@
 #include <WiFi.h>
 #include <LittleFS.h>
 
+#include <vector>
+#include <string>
+
 #include <utility.file.h>
 
 #define WIFI_CONFIG_FILE "/WiFiConfig.json"
@@ -33,10 +36,29 @@ namespace ESP32WebServer
     {
         return WiFi.status() == WL_CONNECTED;
     }
-    
+
     inline void clearWiFiConfig()
     {
         removeFile(WIFI_CONFIG_FILE);
+    }
+
+    inline std::vector<WiFiConfig> scanNetworks()
+    {
+        std::vector<WiFiConfig> ssids;
+
+        int n = WiFi.scanNetworks();
+        for (int i = 0; i < n; ++i)
+        {
+            WiFiConfig config;
+            config.ssid = WiFi.SSID(i).c_str();
+            config.signalStrength = std::to_string(WiFi.RSSI(i)) + " dBm";
+            config.ipAddress = ""; // IP address is not available during scan
+            ssids.push_back(config);
+
+            Serial.printf("Found network: %s (Signal: %s)\n", config.ssid.c_str(), config.signalStrength.c_str());
+        }
+
+        return ssids;
     }
 
     inline void setWiFiConfig(const std::string &ssid, const std::string &password)
@@ -66,8 +88,9 @@ namespace ESP32WebServer
 
         if (WiFi.status() == WL_CONNECTED)
         {
-            config.signalStrength = std::to_string(WiFi.RSSI());
-            config.ipAddress = std::to_string(WiFi.localIP());
+            config.signalStrength = std::to_string(WiFi.RSSI()) + std::string(" dBm");
+            ;
+            config.ipAddress = WiFi.localIP().toString().c_str();
         }
         else
         {
@@ -78,7 +101,7 @@ namespace ESP32WebServer
         return config;
     }
 
-    inline void setupWiFi(const std::string &ssid, const std::string &password)
+    inline void setupWiFi(const std::string &ssid, const std::string &password, bool forceReconnect = false)
     {
 
         /**
@@ -101,7 +124,7 @@ namespace ESP32WebServer
         std::string ssidToUse = ssid;
         std::string passwordToUse = password;
 
-        if (WiFi.status() == WL_CONNECTED)
+        if (WiFi.status() == WL_CONNECTED && !forceReconnect)
         {
             Serial.println("Already connected to WiFi, skipping setup.");
             return;
@@ -146,8 +169,12 @@ namespace ESP32WebServer
         Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
         Serial.println();
     }
+    inline void setupWiFi(const std::string &ssid, const std::string &password)
+    {
+        setupWiFi(ssid, password, false);
+    }
     inline void setupWiFi()
     {
-        setupWiFi("", "");
+        setupWiFi("", "", false);
     }
 }
