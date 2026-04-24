@@ -19,6 +19,11 @@
 
 namespace ESP32WebServer
 {
+
+    // Will enter AP mode if connection cannot be established within this timeout.
+    const int WIFI_TIMEOUT_SEC = 30;
+    const std::string DEFAULT_WIFI_SSID = "ESP32_MiniWebServer";
+
     struct WiFiConfig
     {
         std::string ssid;
@@ -143,7 +148,7 @@ namespace ESP32WebServer
             Serial.println("No WiFi credentials provided and no config file found, starting in AP mode...");
 
             WiFi.mode(WIFI_AP);
-            WiFi.softAP("ESP32_MiniWebServer");
+            WiFi.softAP(DEFAULT_WIFI_SSID.c_str());
             Serial.printf("Local IP: %s\n", WiFi.softAPIP().toString().c_str());
             return;
         }
@@ -153,15 +158,28 @@ namespace ESP32WebServer
             setWiFiConfig(ssidToUse, passwordToUse);
         }
 
+        
         WiFi.begin(ssidToUse.c_str(), passwordToUse.c_str());
 
-        Serial.println();
-        Serial.printf("SSID: %s\n", ssidToUse.c_str());
+        const int timeStart = millis() / 1000;
+
+        Serial.printf("\nSSID: %s\n", ssidToUse.c_str());
         Serial.print("Connecting to WiFi...");
         while (WiFi.status() != WL_CONNECTED)
         {
             delay(500);
             Serial.print(".");
+
+            const int timeNow = millis() / 1000;
+            if (timeNow - timeStart >= WIFI_TIMEOUT_SEC)
+            {
+                Serial.println("Connection Failed! Timeout reached.");
+                WiFi.mode(WIFI_AP);
+                WiFi.softAP(DEFAULT_WIFI_SSID.c_str());
+                Serial.printf("Local IP: %s\n", WiFi.softAPIP().toString().c_str());
+                Serial.println("\nWiFi connection timed out, started in AP mode...");
+                return;
+            }
         }
 
         Serial.println("Connected!");
