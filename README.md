@@ -26,7 +26,7 @@ May not work with the RISC V Processor
 - ESP32-H2
 
 It Should work with following families:
-- ESP32
+- ESP32 (WROOM, WROVER, CAM ...)
 - ESP32-S2
 - ESP32-S3
 
