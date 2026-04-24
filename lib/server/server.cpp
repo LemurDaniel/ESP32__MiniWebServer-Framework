@@ -263,7 +263,6 @@ namespace ESP32WebServer
                 {
                     Serial.printf("Removing inactive connection on socket %d\n", con->socket);
                     con = server->connections.erase(con);
-                    close(con->socket);
                 }
                 else
                 {
@@ -294,11 +293,13 @@ namespace ESP32WebServer
 
             if (client_socket < 0)
             {
+                Serial.println("Failed to accept client connection");
                 return;
             }
             else if (connections.size() >= ESP32WebServer::CONNECTION_LIMIT)
             {
                 Serial.println("Maximum connections reached. Rejecting new client.");
+                write(client_socket, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 19\r\n\r\nService Unavailable", 75);
                 close(client_socket);
             }
             else
