@@ -531,6 +531,7 @@ namespace ESP32WebServer
                             Save</button>
                         <button onclick="scanWiFi()" id="btnScanWiFi" class="btn btn-sm" style="background:#7f8c8d;"><i
                                 class="fa-solid fa-rotate"></i> Rescan</button>
+                        <button onClick="clearWiFiConfig()" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Clear</button>
                     </div>
                 </div>
             </div>
@@ -556,12 +557,11 @@ namespace ESP32WebServer
     <div class="modal-overlay" id="modal-wifi-saved">
         <div class="modal">
             <div class="modal-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <h3>WiFi gespeichert</h3>
-            <p>Die neue WLAN-Verbindung wird erst nach einem Neustart aktiv.</p>
+            <h3>WiFi saved</h3>
+            <p>The new WiFi connection will be activated after a restart.</p>
             <div class="btn-row">
-                <button onclick="closeModal('modal-wifi-saved')" class="btn btn-secondary btn-sm">Später</button>
-                <button onclick="doRestart()" class="btn btn-sm"><i class="fa-solid fa-power-off"></i> Jetzt
-                    neustarten</button>
+                <button onclick="closeModal('modal-wifi-saved')" class="btn btn-secondary btn-sm">Later</button>
+                <button onclick="doRestart()" class="btn btn-sm"><i class="fa-solid fa-power-off"></i> Restart Now</button>
             </div>
         </div>
     </div>
@@ -570,13 +570,24 @@ namespace ESP32WebServer
     <div class="modal-overlay" id="modal-restart">
         <div class="modal">
             <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <h3>Gerät neustarten?</h3>
-            <p>Der ESP32 wird neu gestartet. Die Verbindung wird kurz unterbrochen.</p>
+            <h3>Restart device?</h3>
+            <p>The ESP32 will be restarted. The connection will be briefly interrupted.</p>
             <div class="btn-row">
-                <button onclick="closeModal('modal-restart')" class="btn btn-secondary btn-sm">Abbrechen</button>
+                <button onclick="closeModal('modal-restart')" class="btn btn-secondary btn-sm">Cancel</button>
                 <button onclick="doRestart()" class="btn btn-danger btn-sm"><i class="fa-solid fa-power-off"></i>
-                    Neustarten</button>
+                    Restart</button>
             </div>
+        </div>
+    </div>
+
+    <!-- WiFi cleared popup -->
+    <div class="modal-overlay" id="modal-wifi-cleared">
+        <div class="modal">
+            <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-trash"></i></div>
+            <h3>WiFi Configuration cleared</h3>
+            <p>Saved WiFi configuration has been cleared.</p>
+            <p>Will take effect after restart!</p>
+            <button onclick="closeModal('modal-wifi-cleared')" class="btn btn-secondary btn-sm">OK</button>
         </div>
     </div>
 
@@ -625,6 +636,15 @@ namespace ESP32WebServer
             } finally {
                 scanWiFiRunning = false;
             }
+        }
+
+        async function clearWiFiConfig() {
+            if (!confirm("Are you sure you want to clear the WiFi configuration?")) return;
+
+            await fetch('/admin/wifi', { method: 'DELETE' }).catch(() => { });
+            loadWiFiConfig();
+
+            openModal('modal-wifi-cleared');
         }
 
         async function postWiFiConfig() {
@@ -871,6 +891,36 @@ namespace ESP32WebServer
         res.OK().text("WiFi config cleared");
     }
 
+    /**
+     ******************************************************************************
+     ******************************************************************************
+     * Handle Admin Credentials update route for admin panel
+     *
+     */
+
+     inline void post_AdminUpdateAuth(Request const &req, Response &res)
+     {
+        if (req.body.isNull())
+        {
+            res.status(400).text("Invalid JSON");
+            return;
+        }
+
+        if (!req.body["admin_user"].is<std::string>() || !req.body["admin_pwd"].is<std::string>())
+        {
+            res.status(400).text("Missing admin_user or admin_pwd");
+            return;
+        }
+
+        // TODO: Implement admin credential update logic
+        std::string newAdminUser = req.body["admin_user"].as<std::string>();
+        std::string newAdminPwd = req.body["admin_pwd"].as<std::string>();
+
+        const std::string hashedPwd = generateSHA256(newAdminPwd);
+
+        res.OK().text("Admin credentials updated");
+     }
+
     inline void post_AdminRestart(Request const &req, Response &res)
     {
         res.OK().text("Restarting...");
@@ -885,7 +935,7 @@ namespace ESP32WebServer
         {
             add("GET", "/admin", get_AdminLogin);
             add("POST", "/admin/login", post_AdminLogin);
-
+            add("POST", "/admin/auth", {is_Authenticated, post_AdminUpdateAuth});
             add("GET", "/admin/dashboard", {is_Authenticated, get_AdminDashboard});
             add("GET", "/admin/wifi", {is_Authenticated, get_AdminWiFiConfig});
             add("GET", "/admin/wifi/scan", {is_Authenticated, get_AdminWiFiScan});
