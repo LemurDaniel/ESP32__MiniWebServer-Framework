@@ -171,10 +171,13 @@ namespace ESP32WebServer
                 return false;
             };
 
-            if(localStorage.getItem('adminToken')) {
-                // If token exists, try to access dashboard directly
-                window.location.replace('/admin/dashboard');
-            }
+            fetch('/admin/logged_in', {
+                method: 'GET'
+            }).then(res => {
+                if (res.ok) {
+                    window.location.replace('/admin/dashboard');
+                }
+            });
         };
 
         async function postLogin() {
@@ -683,7 +686,7 @@ namespace ESP32WebServer
             }
         }
         window.onload = loadWiFiConfig;
-        setInterval(loadWiFiConfig, 10000);
+        // setInterval(loadWiFiConfig, 10000);
     </script>
 </body>
 
@@ -742,15 +745,14 @@ namespace ESP32WebServer
     *
     */
 
-    inline void is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    inline bool isTokenValid(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-
         Serial.println("Checking authentication for admin route");
+
         if (req.cookies.find("adminToken") == req.cookies.end())
         {
             Serial.println("No admin token found in cookies");
-            res.header("Location", "/admin").status(401).text("Unauthorized: No token provided").finalize();
-            return;
+            return false;
         }
 
         const std::string authToken = req.cookies.at("adminToken");
@@ -758,11 +760,30 @@ namespace ESP32WebServer
         if (!TokenManager::instance().checkToken(authToken))
         {
             Serial.println("Invalid or expired admin token");
-            res.header("Location", "/admin").status(401).text("Unauthorized: No token provided").finalize();
-            return;
+            return false;
         }
 
-        return;
+        return true;
+    }
+
+    inline void verify_AdminAuth(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        if (!isTokenValid(req, res))
+        {
+            res.status(401).text("Unauthorized: Invalid or expired token");
+        }
+        else
+        {
+            res.status(200).text("Authenticated");
+        }
+    }
+
+    inline void is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        if (!isTokenValid(req, res))
+        {
+            res.header("Location", "/admin").status(302).text("Unauthorized: No token provided").finalize();
+        }
     }
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
@@ -898,8 +919,8 @@ namespace ESP32WebServer
      *
      */
 
-     inline void post_AdminUpdateAuth(Request const &req, Response &res)
-     {
+    inline void post_AdminUpdateAuth(Request const &req, Response &res)
+    {
         if (req.body.isNull())
         {
             res.status(400).text("Invalid JSON");
@@ -919,7 +940,7 @@ namespace ESP32WebServer
         const std::string hashedPwd = generateSHA256(newAdminPwd);
 
         res.OK().text("Admin credentials updated");
-     }
+    }
 
     inline void post_AdminRestart(Request const &req, Response &res)
     {
@@ -933,10 +954,18 @@ namespace ESP32WebServer
     public:
         AdminRouter()
         {
-            add("GET", "/admin", get_AdminLogin);
+            // Perform login and return token
             add("POST", "/admin/login", post_AdminLogin);
-            add("POST", "/admin/auth", {is_Authenticated, post_AdminUpdateAuth});
+            add("GET", "/admin/logged_in", verify_AdminAuth);
+
+            // Returns the html sites
+            add("GET", "/admin", get_AdminLogin);
             add("GET", "/admin/dashboard", {is_Authenticated, get_AdminDashboard});
+
+            // Return 401 if the token is not valid or missing for any /admin/* route
+            add("POST", "/admin/auth", {is_Authenticated, post_AdminUpdateAuth});
+
+            // Wifi config routes for admin dashboard
             add("GET", "/admin/wifi", {is_Authenticated, get_AdminWiFiConfig});
             add("GET", "/admin/wifi/scan", {is_Authenticated, get_AdminWiFiScan});
             add("POST", "/admin/wifi", {is_Authenticated, post_AdminWiFiConfig});

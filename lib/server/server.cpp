@@ -96,12 +96,13 @@ namespace ESP32WebServer
             for (const auto &handler : route)
             {
                 handler(request, response);
-                
+
                 Serial.printf("Executed handler for route: %s\n", routeKey.c_str());
                 Serial.printf("Response status code: %d\n", response.status_code);
                 Serial.printf("Finalized: %s\n", response.finalized ? "true" : "false");
 
-                if(response.finalized) {
+                if (response.finalized)
+                {
                     break;
                 }
             }
@@ -236,11 +237,22 @@ namespace ESP32WebServer
             // Hier wartet der Task, verbraucht 0% CPU währenddessen
             if (xQueueReceive(server->handleQueue, &client_socket, portMAX_DELAY))
             {
+                // --- TIMEOUT SETUP START ---
+                struct timeval tv;
+                tv.tv_sec = 5;
+                tv.tv_usec = 0;
+
+                setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+                // --- TIMEOUT SETUP END ---
+
                 Serial.printf("Worker handling client on socket %d\n", client_socket);
-                // Update last active time for cleanup
+
                 server->handleClient(client_socket);
 
                 Serial.printf("Worker finished handling client on socket %d\n", client_socket);
+
+                shutdown(client_socket, SHUT_RDWR);
                 close(client_socket);
             }
         }
@@ -263,6 +275,8 @@ namespace ESP32WebServer
                 {
                     Serial.printf("Removing inactive connection on socket %d\n", con->socket);
                     con = server->connections.erase(con);
+                    shutdown(con->socket, SHUT_RDWR);
+                    close(con->socket);
                 }
                 else
                 {
