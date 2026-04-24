@@ -15,6 +15,15 @@ namespace ESP32WebServer
     class Response
     {
     public:
+        // Flag to indicate if the response has been finalized by some middleware or handler, preventing further modifications
+        int finalized = false;
+
+        Response& finalize()
+        {
+            this->finalized = true;
+            return *this;
+        }
+
         std::string responseMode = "body"; // "body" or "file"
 
         // HTTP status code for the response (e.g., 200 for OK, 404 for Not Found)
@@ -30,7 +39,7 @@ namespace ESP32WebServer
         size_t fileSize;
         std::string filePath;
 
-        Response header(const std::string &key, const std::string &value)
+        Response& header(const std::string &key, const std::string &value)
         {
             headers[key] = value;
             return *this;
@@ -69,7 +78,7 @@ namespace ESP32WebServer
          * 500 - Internal Server Error
          */
 
-        Response OK()
+        Response& OK()
         {
             if (this->body.empty())
             {
@@ -79,7 +88,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response NotFound()
+        Response& NotFound()
         {
             if (this->body.empty())
             {
@@ -89,7 +98,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response InternalServerError()
+        Response& InternalServerError()
         {
             if (this->body.empty())
             {
@@ -99,7 +108,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response status(int status)
+        Response& status(int status)
         {
             this->status_code = status;
             return *this;
@@ -111,7 +120,7 @@ namespace ESP32WebServer
          * Response body helpers for different content types
          *
          */
-        Response file(const std::string &path)
+        Response& file(const std::string &path)
         {
             this->binaryFile(path);
 
@@ -121,7 +130,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response binaryFile(const std::string &path)
+        Response& binaryFile(const std::string &path)
         {
             // Check if LittleFS is already mounted, if not, mount it
             if (!LittleFS.begin(true)) // Format if mount fails
@@ -158,7 +167,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response text(const std::string &text)
+        Response& text(const std::string &text)
         {
             this->body = text;
             this->responseMode = "body";
@@ -166,7 +175,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response json(JsonDocument bodyJson)
+        Response& json(JsonDocument bodyJson)
         {
             char body[2048];
             serializeJson(bodyJson, body, sizeof(body));
@@ -177,7 +186,7 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response html(const std::string &htmlBody)
+        Response& html(const std::string &htmlBody)
         {
             this->text(htmlBody);
             this->header("Content-Type", "text/html; charset=utf-8");

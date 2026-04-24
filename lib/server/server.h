@@ -57,10 +57,10 @@ namespace ESP32WebServer
         void addFile(const std::string &path, const std::string &file_path);
 
         // Register routes with method, path and handler function
-        void add(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler);
-        void get(const std::string &path, std::function<void(const Request &, Response &)> handler);
-        void post(const std::string &path, std::function<void(const Request &, Response &)> handler);
-        void put(const std::string &path, std::function<void(const Request &, Response &)> handler);
+        void add(const std::string &method, const std::string &path, RequestHandler handler);
+        void get(const std::string &path, RequestHandler handler);
+        void post(const std::string &path, RequestHandler handler);
+        void put(const std::string &path, RequestHandler handler);
         void registerRouter(const ESP32WebServer::Router &router);
 
     private:
@@ -80,8 +80,9 @@ namespace ESP32WebServer
         void serveFile(int client_socket, Response &res);
 
         // Map of "METHOD PATH" to handler function for dynamic routes
-        std::map<std::string, std::function<void(const Request &, Response &)>> routes;
-        void addRoute(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler);
+        std::map<std::string, std::vector<RequestHandler>> routes;
+        void addRoute(const std::string &method, const std::string &path, RequestHandler handler);
+        void addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers);
 
         // Connection Management
         struct Connection

@@ -144,6 +144,13 @@ namespace routes_example
             add("GET", "/status", get_status);
             add("GET", "/example", get_example);
             add("POST", "/data", post_data);
+
+            // Multiple handlers can be added as middleware
+            // Calling res.finalize() stops the execution at that handler
+            add("GET", "/secret", {
+                authHandler,
+                get_secret
+            })
         }
     };
 
@@ -270,6 +277,12 @@ Sending Response is simplified with lots of helper methods and automatic buildin
 
 ```cpp
 void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res) {
+
+    // Immediatly sends the response back, skipping any following handlers
+    // For example an authHandler finalizes the response with status 401.
+    // No logic in the endpoint is needed, since the response is sent back as is.
+    res.status(401).finalize()
+
     // 📝 Text response
     res.text("Simple text response").status(200);
     

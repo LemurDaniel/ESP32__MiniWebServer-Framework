@@ -722,23 +722,27 @@ namespace ESP32WebServer
     *
     */
 
-    inline bool is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    inline void is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
+
+        Serial.println("Checking authentication for admin route");
         if (req.cookies.find("adminToken") == req.cookies.end())
         {
-            res.status(401).text("Unauthorized: No token provided");
-            return false;
+            Serial.println("No admin token found in cookies");
+            res.header("Location", "/admin").status(401).text("Unauthorized: No token provided").finalize();
+            return;
         }
 
         const std::string authToken = req.cookies.at("adminToken");
 
         if (!TokenManager::instance().checkToken(authToken))
         {
-            res.status(401).text("Unauthorized: Invalid or expired token");
-            return false;
+            Serial.println("Invalid or expired admin token");
+            res.header("Location", "/admin").status(401).text("Unauthorized: No token provided").finalize();
+            return;
         }
 
-        return true;
+        return;
     }
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
@@ -810,6 +814,7 @@ namespace ESP32WebServer
      */
     inline void get_AdminWiFiConfig(Request const &req, Response &res)
     {
+        Serial.println("Fetching current WiFi configuration for admin dashboard");
         ESP32WebServer::WiFiConfig wifiConfig = ESP32WebServer::getWiFiConfig();
 
         JsonDocument doc;
@@ -874,12 +879,12 @@ namespace ESP32WebServer
         {
             add("GET", "/admin", get_AdminLogin);
             add("POST", "/admin/login", post_AdminLogin);
-            add("GET", "/admin/dashboard", get_AdminDashboard);
 
-            add("GET", "/admin/wifi", get_AdminWiFiConfig);
-            add("GET", "/admin/wifi/scan", get_AdminWiFiScan);
-            add("POST", "/admin/wifi", post_AdminWiFiConfig);
-            add("POST", "/admin/restart", post_AdminRestart);
+            add("GET", "/admin/dashboard", {is_Authenticated, get_AdminDashboard});
+            add("GET", "/admin/wifi", {is_Authenticated, get_AdminWiFiConfig});
+            add("GET", "/admin/wifi/scan", {is_Authenticated, get_AdminWiFiScan});
+            add("POST", "/admin/wifi", {is_Authenticated, post_AdminWiFiConfig});
+            add("POST", "/admin/restart", {is_Authenticated, post_AdminRestart});
         }
     };
 }

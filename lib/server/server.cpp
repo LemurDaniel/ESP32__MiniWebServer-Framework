@@ -93,7 +93,18 @@ namespace ESP32WebServer
         {
             // Retrieve the handler function for the matched route and execute it
             const auto route = routes[routeKey];
-            route(request, response);
+            for (const auto &handler : route)
+            {
+                handler(request, response);
+                
+                Serial.printf("Executed handler for route: %s\n", routeKey.c_str());
+                Serial.printf("Response status code: %d\n", response.status_code);
+                Serial.printf("Finalized: %s\n", response.finalized ? "true" : "false");
+
+                if(response.finalized) {
+                    break;
+                }
+            }
 
             if (response.responseMode == "file")
             {
@@ -160,9 +171,13 @@ namespace ESP32WebServer
         addFile("/index.html", index_path);
     }
 
-    void MiniServer::addRoute(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler)
+    void MiniServer::addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
     {
-        routes.insert({method + " " + path, handler});
+        routes.insert({method + " " + path, handlers});
+    }
+    void MiniServer::addRoute(const std::string &method, const std::string &path, RequestHandler handler)
+    {
+        addRoute(method, path, std::vector<RequestHandler>{handler});
     }
 
     void MiniServer::addFile(const std::string &path, const std::string &file_path)
@@ -176,22 +191,22 @@ namespace ESP32WebServer
         addRoute("GET", path, handler);
     }
 
-    void MiniServer::add(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler)
+    void MiniServer::add(const std::string &method, const std::string &path, RequestHandler handler)
     {
         addRoute(method, path, handler);
     }
 
-    void MiniServer::get(const std::string &path, std::function<void(const Request &, Response &)> handler)
+    void MiniServer::get(const std::string &path, RequestHandler handler)
     {
         addRoute("GET", path, handler);
     }
 
-    void MiniServer::post(const std::string &path, std::function<void(const Request &, Response &)> handler)
+    void MiniServer::post(const std::string &path, RequestHandler handler)
     {
         addRoute("POST", path, handler);
     }
 
-    void MiniServer::put(const std::string &path, std::function<void(const Request &, Response &)> handler)
+    void MiniServer::put(const std::string &path, RequestHandler handler)
     {
         addRoute("PUT", path, handler);
     }
@@ -241,7 +256,7 @@ namespace ESP32WebServer
 
             for (auto con = server->connections.begin(); con != server->connections.end();)
             {
-                
+
                 const int current_sec = millis() / 1000;
 
                 if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)

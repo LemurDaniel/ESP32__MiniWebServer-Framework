@@ -12,6 +12,8 @@
 
 namespace ESP32WebServer
 {
+    using RequestHandler = std::function<void(const Request &, Response &)>;
+
     class Router
     {
     public:
@@ -19,15 +21,21 @@ namespace ESP32WebServer
         {
             std::string method;
             std::string path;
-            void (*handler)(const ESP32WebServer::Request &, ESP32WebServer::Response &);
+            std::vector<RequestHandler> handler;
         };
         std::vector<Route> routes;
 
         Router() {};
 
-        void add(const std::string &method, const std::string &path, void (*handler)(const ESP32WebServer::Request &, ESP32WebServer::Response &))
+        void add(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
         {
-            routes.push_back({method, path, handler});
+            routes.push_back({method, path, handlers});
+
+        }
+
+        void add(const std::string &method, const std::string &path, RequestHandler handler)
+        {
+            add(method, path, std::vector<RequestHandler>{handler});
         }
 
     private:
