@@ -16,11 +16,19 @@
 
 ## 🎯 Overview
 
-A lightweight **Mini WebServer Framework** for ESP32 microcontrollers! 🎉 
-
-This framework is a personal Project providing a MiniWebserver with dynamically managable Endpoints and easier request and response handling! 📊✨
+A lightweight **Mini WebServer Framework** for ESP32 microcontrollers as a personal project! 🎉 
 
 Just copy the server folder into your project and include server.h for the server and router.h for your routes.
+
+May not work with the RISC V Processor
+- ESP32-C3
+- ESP32-C6
+- ESP32-H2
+
+It Should work with following families:
+- ESP32
+- ESP32-S2
+- ESP32-S3
 
 ## 🙏 Acknowledgments
 
