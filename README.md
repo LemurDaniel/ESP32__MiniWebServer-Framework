@@ -13,15 +13,23 @@
 
 </div>
 
+
 ## 🎯 Overview
 
 A lightweight **Mini WebServer Framework** for ESP32 microcontrollers! 🎉 
 
 This framework is a personal Project providing a MiniWebserver with dynamically managable Endpoints and easier request and response handling! 📊✨
 
-## 📁 Project Structure
 
-- Just include the folder **lib/server/** and include to your main.cpp and routes.<name>.h as described.
+## 🙏 Acknowledgments
+
+- 🎉 **Arduino Community** for the amazing ecosystem
+- 🔧 **PlatformIO** for the excellent development platform
+- 🌐 **ESP32** community for inspiration and support
+- 💖 **Open Source** contributors worldwide
+
+
+## 📁 Project Structure
 
 ```
 📦 ESP32 Mini WebServer Framework
@@ -30,6 +38,9 @@ This framework is a personal Project providing a MiniWebserver with dynamically 
 │   └── 📁 routes/
 │       └── 🛤️ routes.test.h        # API route definitions
 │       └── 🛤️ routes.test.cpp      # API route Implementations
+├── 📁 data/
+│   └── 📁 web/
+│       └── 🎨 index.html           # Web interface
 ├── 📁 lib/
 │   └── 📁 server/
 │       ├── 🌐 server.h/.cpp        # Core web server
@@ -40,41 +51,9 @@ This framework is a personal Project providing a MiniWebserver with dynamically 
 │       ├── 🛜 utility.wifi.h       # WiFi utility
 │       ├── 📂 utility.file.h       # File utility
 │       └── 📋 ArduinoJson-v7.4.3.h # JSON library
-├── 📁 data/
-│   └── 📁 web/
-│       └── 🎨 index.html           # Web interface
 ├── ⚙️ platformio.ini               # Build configuration
 └── 📖 README.md                    # This file
 ```
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- ✅ [PlatformIO IDE](https://platformio.org/platformio-ide) 
-- ✅ ESP32 development board
-- ✅ USB cable for programming 🔌
-- ✅ WiFi network 📶
-
-### Installation
-
-1. **Connect your ESP32 via USB Cable** 🔌
-
-2. **Install Plattfrom.IO Extension** 💾
-
-3. **Update WiFi credentials** 🔐
-   Edit `src/main.cpp` and update your WiFi settings:
-   ```cpp
-   custom_utils::connectWiFi("YOUR_WIFI_NAME", "YOUR_PASSWORD");
-   ```
-   
-4. **Build and Upload FileSystem (to push /data contents to ESP32)** 🔨
-
-![PlatformIO.IO](.assets/pio.build-filesystem.png)
-
-5. **Use Plattform.IO to Upload and Monitor code from main.cpp** 🔨
-
-![PlatformIO.IO](.assets/pio.upload-monitor.png)
 
 ## 🎮 Usage
 
@@ -94,7 +73,45 @@ This framework is a personal Project providing a MiniWebserver with dynamically 
 | 🟢 GET | `/example` | Example Get | Text response 📝 |
 | 🟡 POST | `/data` | Simple POST | JSON data response 📊 |
 
-## 🛤️ Router System & Route Management
+
+---
+
+<details>
+<summary>🚀 Quick Start</summary>
+
+### Prerequisites
+
+- ✅ [PlatformIO IDE](https://platformio.org/platformio-ide)
+- ✅ ESP32 development board
+- ✅ USB cable for programming 🔌
+- ✅ WiFi network 📶
+
+### Installation
+
+1. **Connect your ESP32 via USB Cable** 🔌
+
+2. **Install Plattfrom.IO Extension** 💾
+
+3. **Update WiFi credentials** 🔐
+   Edit `src/main.cpp` and update your WiFi settings:
+   ```cpp
+   custom_utils::connectWiFi("YOUR_WIFI_NAME", "YOUR_PASSWORD");
+   ```
+
+4. **Build and Upload FileSystem (to push /data contents to ESP32)** 🔨
+
+![PlatformIO.IO](.assets/pio.build-filesystem.png)
+
+5. **Use Plattform.IO to Upload and Monitor code from main.cpp** 🔨
+
+![PlatformIO.IO](.assets/pio.upload-monitor.png)
+
+</details>
+
+---
+
+<details>
+<summary>🛤️ Router System & Route Management</summary>
 
 ### 📁 **Router File Structure**
 
@@ -122,14 +139,6 @@ The included ```<routes/routes.example.h>``` header files defines all methods an
 
 namespace routes_example
 {
-    /**
-     ***********************************************
-     ************************************************
-     * Defining routes for overview and testing
-     *
-     *
-     **/
-
     void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
     void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
     void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
@@ -165,13 +174,6 @@ The Code ist implemented in the CPP-File including its Header-File
 
 namespace routes_example
 {
-    /**
-     ***********************************************
-     ************************************************
-     * Implementing actual routes
-     *
-     *
-     **/
     void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
         res.text("Hello, World! This is a simple response from the ESP32.").status(200);
@@ -207,6 +209,7 @@ namespace routes_example
 ```
 
 #### ⚡ **Configure Routes on the Server**
+
 ```cpp
 #include <Arduino.h>
 
@@ -311,9 +314,14 @@ void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &r
 }
 ```
 
-## 🔗 Middleware
+</details>
 
-Middleware allows you to chain multiple handler functions for a single route. Each handler runs in order. if one calls `res.finalize()`, the chain stops immediately and no further handlers are executed.
+---
+
+<details>
+<summary>🔗 Middleware</summary>
+
+Middleware allows you to chain multiple handler functions for a single route. Each handler runs in order — if one calls `res.finalize()`, the chain stops immediately and no further handlers are executed.
 
 ### **How it works**
 
@@ -388,13 +396,4 @@ Request → authMiddleware
 | Logging | Log request details, then call next handler without finalizing |
 | Rate Limiting | Track request counts, abort with `429` if threshold exceeded |
 
-## 📄 License
-
-This project is licensed under the **MIT License** 📜 - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- 🎉 **Arduino Community** for the amazing ecosystem
-- 🔧 **PlatformIO** for the excellent development platform
-- 🌐 **ESP32** community for inspiration and support
-- 💖 **Open Source** contributors worldwide
+</details>
