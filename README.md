@@ -311,6 +311,83 @@ void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &r
 }
 ```
 
+## 🔗 Middleware
+
+Middleware allows you to chain multiple handler functions for a single route. Each handler runs in order. if one calls `res.finalize()`, the chain stops immediately and no further handlers are executed.
+
+### **How it works**
+
+Instead of a single `RequestHandler`, pass a `std::vector<RequestHandler>` to `add()`:
+
+```cpp
+add("GET", "/secret", {
+    authMiddleware,   // runs first — aborts with 401 if not authorized
+    get_secret        // only runs if authMiddleware did NOT finalize the response
+});
+```
+
+The server iterates through all handlers and breaks as soon as `response.finalized == true` ([server.cpp](lib/server/server.cpp#L96-L107)).
+
+### **Implementing Middleware**
+
+A middleware handler has the same signature as a regular route handler. Call `res.finalize()` to short-circuit the chain:
+
+```cpp
+void authMiddleware(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+{
+    // Check for a valid session cookie or token
+    if (req.cookies.find("session") == req.cookies.end())
+    {
+        res.text("Unauthorized").status(401).finalize();
+        // Chain stops here — get_secret is never called
+        return;
+    }
+    // No finalize() call → next handler in the chain runs
+}
+
+void get_secret(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+{
+    res.text("Secret data!").status(200);
+}
+```
+
+### **Registering Middleware in a Router**
+
+```cpp
+class Router : public ESP32WebServer::Router
+{
+public:
+    Router()
+    {
+        // Public routes — single handler
+        add("GET", "/hello", get_hello);
+
+        // Protected routes — middleware chain
+        add("GET", "/secret",  { authMiddleware, get_secret  });
+        add("POST", "/config", { authMiddleware, post_config });
+    }
+};
+```
+
+### **Execution Flow**
+
+```
+Request → authMiddleware
+              │
+              ├─ not authorized → res.finalize() → Response (401) sent
+              │
+              └─ authorized ────────────────────→ get_secret → Response (200) sent
+```
+
+### **Common Middleware Patterns**
+
+| Pattern | Description |
+|---------|-------------|
+| Authentication | Check session cookie / token, abort with `401` if missing |
+| Authorization | Verify user role/permissions, abort with `403` |
+| Logging | Log request details, then call next handler without finalizing |
+| Rate Limiting | Track request counts, abort with `429` if threshold exceeded |
+
 ## 📄 License
 
 This project is licensed under the **MIT License** 📜 - see the LICENSE file for details.
