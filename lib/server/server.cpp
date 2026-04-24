@@ -109,7 +109,7 @@ namespace ESP32WebServer
 
         else
         {
-            // No route matched, return 404 Not Found
+            Serial.printf("No handler found for route: %s\n", routeKey.c_str());
             response.NotFound();
             std::string header = response.getHeaders();
             write(client_socket, header.c_str(), header.size());

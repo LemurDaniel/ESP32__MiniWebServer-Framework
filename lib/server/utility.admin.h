@@ -20,6 +20,13 @@
 
 namespace ESP32WebServer
 {
+
+    const std::string DEFAULT_ADMIN_USER = "admin";
+    const std::string DEFAULT_ADMIN_PWD = "admin";
+
+    // TODO: Add salt 🧂 for password storage
+    const std::string DEFAULT_ADMIN_SALT = "5B63F3F0104D1649B8E1A9C9E5F2A1"; // Random salt for password hashing
+
     inline void get_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
         std::string adminPage = R"html(
@@ -133,11 +140,16 @@ namespace ESP32WebServer
                     })
                 });
 
+                if(!res.ok) {
+                    alert('Login fehlgeschlagen: ' + res.statusText);
+                    return;
+                }
+
                 const json = await res.json();
                 const token = json.token;
-                console.log('Login erfolgreich, Token:', token);
+                localStorage.setItem('adminToken', token);
 
-                
+                window.location.replace('/admin/dashboard')
             }
             catch (error) {
                 console.error('Fehler beim Login:', error);
@@ -627,10 +639,12 @@ namespace ESP32WebServer
     * Handle Login logic for admin panel
     *
     */
-    inline std::string randomString() {
+    inline std::string randomString()
+    {
         std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         std::string result;
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 16; i++)
+        {
             int index = random(0, charSet.size());
             result += charSet[index];
         }
@@ -652,7 +666,8 @@ namespace ESP32WebServer
         mbedtls_md_free(&ctx);
 
         std::string hashStr;
-        for (uint8_t byte : hash)        {
+        for (uint8_t byte : hash)
+        {
             char buf[3];
             snprintf(buf, sizeof(buf), "%02x", byte);
             hashStr += buf;
@@ -668,49 +683,66 @@ namespace ESP32WebServer
     *
     */
 
+    inline void is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        // TODO: Implement proper authentication check using token
+    }
+
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
 
-        if(req.body.isNull()){
+        if (req.body.isNull())
+        {
             Serial.println("Invalid JSON in login request");
             res.status(400).text("Invalid JSON");
             return;
         }
 
-        if(!req.body["username"].is<std::string>() && !req.body["password"].is<std::string>()){
+        if (!req.body["username"].is<std::string>() && !req.body["password"].is<std::string>())
+        {
             Serial.println("Missing username or password in login request");
             res.status(400).text("Invalid username or password");
             return;
         }
 
         std::string admin_user = "admin";
-        std::string admin_pwd = generateSHA256("admin123");
+        std::string admin_pwd = generateSHA256("admin");
 
         std::string username = req.body["username"].as<std::string>();
         std::string password = generateSHA256(req.body["password"].as<std::string>());
 
         // Read stored credentials from file
-        if(fileExists(ADMIN_CREDENTIALS_FILE)){
+        if (fileExists(ADMIN_CREDENTIALS_FILE))
+        {
             Serial.println("Reading admin credentials from file");
             const JsonDocument doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
-            if(doc["admin_user"].is<std::string>() && doc["admin_pwd"].is<std::string>()){
+            if (doc["admin_user"].is<std::string>() && doc["admin_pwd"].is<std::string>())
+            {
                 admin_user = doc["admin_user"].as<std::string>();
-                admin_pwd = doc["admin_pwd"].as<std::string>(); 
+                admin_pwd = doc["admin_pwd"].as<std::string>();
             }
-        } else {
+        }
+        else
+        {
             Serial.println("Admin credentials file not found, using default credentials");
         }
 
-        if(username != admin_user || password != admin_pwd){
+        Serial.printf("Login attempt with username: %s\n", username.c_str());
+        Serial.printf("Expected username: %s\n", admin_user.c_str());
+        Serial.printf("Received password hash: %s\n", password.c_str());
+        Serial.printf("Expected password hash: %s\n", admin_pwd.c_str());
+        if (username != admin_user || password != admin_pwd)
+        {
             Serial.println("Invalid username or password");
             res.status(401).text("Invalid username or password");
             return;
         }
 
+        // TODO: Implement proper session management with expiration and logout functionality
         JsonDocument doc;
         doc["token"] = generateSHA256(username + randomString() + String(millis()).c_str());
 
-        res.status(200).json(doc);
+        res.json(doc);
     }
 
     /**
@@ -785,6 +817,7 @@ namespace ESP32WebServer
         {
             add("GET", "/admin", get_AdminLogin);
             add("POST", "/admin/login", post_AdminLogin);
+            add("GET", "/admin/dashboard", get_AdminDashboard);
 
             add("GET", "/admin/wifi", get_AdminWiFiConfig);
             add("GET", "/admin/wifi/scan", get_AdminWiFiScan);
