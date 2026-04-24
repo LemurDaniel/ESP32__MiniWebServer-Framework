@@ -20,6 +20,53 @@
 
 namespace ESP32WebServer
 {
+    class TokenManager
+    {
+    public:
+        static TokenManager &instance()
+        {
+            static TokenManager _instance;
+            return _instance;
+        }
+
+        void addToken(const std::string &token)
+        {
+            const unsigned long expiry = (millis() / 1000) + 3600;
+            ADMIN_TOKENS.push_back({token, expiry});
+        }
+
+        bool checkToken(const std::string &authToken)
+        {
+            unsigned long currentTime = millis() / 1000;
+
+            for (auto token = ADMIN_TOKENS.begin(); token != ADMIN_TOKENS.end();)
+            {
+                if (currentTime > token->second)
+                {
+                    // Delete expired token
+                    token = ADMIN_TOKENS.erase(token);
+                }
+                else
+                {
+                    if (token->first == authToken)
+                    {
+                        return true;
+                    }
+                    ++token; 
+                }
+            }
+            return false;
+        }
+
+    private:
+        TokenManager() {} // Privater Konstruktor
+
+        // Verhindere Kopien des Singletons (Wichtig!)
+        TokenManager(const TokenManager &) = delete;
+        void operator=(const TokenManager &) = delete;
+
+        std::vector<std::pair<std::string, unsigned long>> ADMIN_TOKENS;
+    };
 
     const std::string DEFAULT_ADMIN_USER = "admin";
     const std::string DEFAULT_ADMIN_PWD = "admin";
@@ -123,6 +170,11 @@ namespace ESP32WebServer
                 postLogin();
                 return false;
             };
+
+            if(localStorage.getItem('adminToken')) {
+                // If token exists, try to access dashboard directly
+                window.location.replace('/admin/dashboard');
+            }
         };
 
         async function postLogin() {
@@ -147,7 +199,8 @@ namespace ESP32WebServer
 
                 const json = await res.json();
                 const token = json.token;
-                localStorage.setItem('adminToken', token);
+
+                document.cookie = `adminToken=${token}; path=/; max-age=3600`; // Cookie valid for 1 hour
 
                 window.location.replace('/admin/dashboard')
             }
@@ -669,9 +722,13 @@ namespace ESP32WebServer
     *
     */
 
-    inline void is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    inline bool is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
         // TODO: Implement proper authentication check using token
+
+        const std::string authToken = "TODO";
+
+        return TokenManager::instance().checkToken(authToken);
     }
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
@@ -724,9 +781,13 @@ namespace ESP32WebServer
             return;
         }
 
-        // TODO: Implement proper session management with expiration and logout functionality
+        const std::string token = generateSHA256(username + randomString() + String(millis()).c_str());
+        const unsigned long tokenExpiresAt = millis() + 3600000; // Token valid for 1 hour
+
+        TokenManager::instance().addToken(token);
+
         JsonDocument doc;
-        doc["token"] = generateSHA256(username + randomString() + String(millis()).c_str());
+        doc["token"] = token;
 
         res.json(doc);
     }
