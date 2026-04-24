@@ -16,8 +16,8 @@ namespace ESP32WebServer
         std::string method;
         std::string path;
         std::map<std::string, std::string> headers;
-        std::string body;
-        JsonDocument jsonBody; // Parsed JSON body (if applicable)
+        std::string bodyRaw; // Raw body as string
+        JsonDocument body; // Parsed JSON body (if applicable)
 
         static Request parse(std::string requestRaw)
         {
@@ -61,20 +61,20 @@ namespace ESP32WebServer
             Request request;
             request.method = method;
             request.path = path;
-            request.body = "";
+            request.bodyRaw = "";
             request.headers = headers;
 
             // Body extrahieren (falls vorhanden)
             size_t headerEnd = requestRaw.find("\r\n\r\n");
             if (headerEnd != std::string::npos)
             {
-                request.body = requestRaw.substr(headerEnd + 4);
+                request.bodyRaw = requestRaw.substr(headerEnd + 4);
                 if (
                     request.headers.find("Content-Type") != request.headers.end() &&
                     request.headers["Content-Type"] == "application/json")
                 {
-                    request.body = requestRaw.substr(headerEnd + 4);
-                    deserializeJson(request.jsonBody, request.body);
+                    request.bodyRaw = requestRaw.substr(headerEnd + 4);
+                    deserializeJson(request.body, request.bodyRaw);
                 }
             }
 

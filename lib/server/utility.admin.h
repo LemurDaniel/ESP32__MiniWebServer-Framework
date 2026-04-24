@@ -7,10 +7,16 @@
 #pragma once
 
 #include <Arduino.h>
-#include <router.h>
+#include <stdlib.h>
+#include <mbedtls/md.h>
+
+#include <vector>
 #include <string>
 
+#include <router.h>
 #include <utility.wifi.h>
+
+#define ADMIN_CREDENTIALS_FILE "/admin_credentials.json"
 
 namespace ESP32WebServer
 {
@@ -19,6 +25,7 @@ namespace ESP32WebServer
         std::string adminPage = R"html(
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -33,27 +40,32 @@ namespace ESP32WebServer
             height: 100vh;
             margin: 0;
         }
+
         .login-container {
             background: white;
             padding: 2rem;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             width: 100%;
             max-width: 400px;
         }
+
         h2 {
             text-align: center;
             color: #333;
             margin-bottom: 1.5rem;
         }
+
         .form-group {
             margin-bottom: 1rem;
         }
+
         label {
             display: block;
             margin-bottom: 0.5rem;
             color: #666;
         }
+
         input {
             width: 100%;
             padding: 0.75rem;
@@ -61,6 +73,7 @@ namespace ESP32WebServer
             border-radius: 4px;
             box-sizing: border-box;
         }
+
         button {
             width: 100%;
             padding: 0.75rem;
@@ -72,27 +85,67 @@ namespace ESP32WebServer
             cursor: pointer;
             transition: background 0.3s;
         }
+
         button:hover {
             background-color: #0056b3;
         }
     </style>
 </head>
+
 <body>
 
-<div class="login-container">
-    <h2>Admin Bereich</h2>
-    <form action="/admin/login" method="POST">
-        <div class="form-group">
-            <label for="username">Benutzername</label>
-            <input type="text" id="username" name="username" required>
-        </div>
-        <div class="form-group">
-            <label for="password">Passwort</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <button type="submit">Einloggen</button>
-    </form>
-</div>
+    <div class="login-container">
+        <h2>Admin Bereich</h2>
+        <form id="form-login">
+            <div class="form-group">
+                <label for="username">Benutzername</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Passwort</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">Einloggen</button>
+        </form>
+    </div>
+
+    <script>
+        // Override form submission to send JSON data
+        window.onload = function () {
+            document.getElementById("form-login").onsubmit = function () {
+                postLogin();
+                return false;
+            };
+        };
+
+        async function postLogin() {
+            const form = document.getElementById('form-login');
+
+            try {
+                const res = await fetch('admin/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: form.username.value,
+                        password: form.password.value
+                    })
+                });
+
+                const json = await res.json();
+                const token = json.token;
+                console.log('Login erfolgreich, Token:', token);
+
+                
+            }
+            catch (error) {
+                console.error('Fehler beim Login:', error);
+            }
+
+        }
+
+    </script>
 
 </body>
 </html>
@@ -400,7 +453,7 @@ namespace ESP32WebServer
                 </div>
                 <div class="info-group">
                     <span class="label">Password</span>
-                    <div class="password" id="password-value">---</div>
+                    <div class="value" id="password-value">---</div>
                 </div>
                 <div class="info-group">
                     <span class="label">Signal Strength</span>
@@ -420,7 +473,7 @@ namespace ESP32WebServer
                     </div>
                     <div class="form-group">
                         <label class="label">Password</label>
-                        <input type="text" id="wifi-password" placeholder="WiFi Password">
+                        <input type="password" id="wifi-password" placeholder="WiFi Password">
                     </div>
                     <div class="btn-row">
                         <button onclick="postWiFiConfig()" class="btn btn-sm"><i class="fa-solid fa-floppy-disk"></i>
@@ -512,7 +565,6 @@ namespace ESP32WebServer
 
                 console.log("Available networks:", json.networks);
                 select.innerHTML = json.networks
-                    .filter(e => e.SSID != currentSSID)
                     .map(e =>
                         `<option value="${e.SSID}">(${e.SignalStrength}) ${e.SSID}</option>`
                     ).join('');
@@ -534,6 +586,9 @@ namespace ESP32WebServer
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ssid, password })
             });
+            // Read updated WiFi Config
+            loadWiFiConfig();
+
             document.getElementById('wifi-form').style.display = 'none';
             openModal('modal-wifi-saved');
         }
@@ -566,13 +621,104 @@ namespace ESP32WebServer
 
         res.html(dashboardPage);
     }
+    /**
+    ******************************************************************************
+    ******************************************************************************
+    * Handle Login logic for admin panel
+    *
+    */
+    inline std::string randomString() {
+        std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        std::string result;
+        for (int i = 0; i < 16; i++) {
+            int index = random(0, charSet.size());
+            result += charSet[index];
+        }
+        return result;
+    }
+
+    inline std::string generateSHA256(const std::string &text)
+    {
+        std::vector<uint8_t> hash(32);
+
+        mbedtls_md_context_t ctx;
+        mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+
+        mbedtls_md_init(&ctx);
+        mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+        mbedtls_md_starts(&ctx);
+        mbedtls_md_update(&ctx, (const unsigned char *)text.c_str(), text.length());
+        mbedtls_md_finish(&ctx, hash.data());
+        mbedtls_md_free(&ctx);
+
+        std::string hashStr;
+        for (uint8_t byte : hash)        {
+            char buf[3];
+            snprintf(buf, sizeof(buf), "%02x", byte);
+            hashStr += buf;
+        }
+
+        return hashStr;
+    }
+
+    /**
+    ******************************************************************************
+    ******************************************************************************
+    * Handle Login route for admin panel
+    *
+    */
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        // TODO TODO TODO: Authentifizierung implementieren
-        get_AdminDashboard(req, res);
+
+        if(req.body.isNull()){
+            Serial.println("Invalid JSON in login request");
+            res.status(400).text("Invalid JSON");
+            return;
+        }
+
+        if(!req.body["username"].is<std::string>() && !req.body["password"].is<std::string>()){
+            Serial.println("Missing username or password in login request");
+            res.status(400).text("Invalid username or password");
+            return;
+        }
+
+        std::string admin_user = "admin";
+        std::string admin_pwd = generateSHA256("admin123");
+
+        std::string username = req.body["username"].as<std::string>();
+        std::string password = generateSHA256(req.body["password"].as<std::string>());
+
+        // Read stored credentials from file
+        if(fileExists(ADMIN_CREDENTIALS_FILE)){
+            Serial.println("Reading admin credentials from file");
+            const JsonDocument doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
+            if(doc["admin_user"].is<std::string>() && doc["admin_pwd"].is<std::string>()){
+                admin_user = doc["admin_user"].as<std::string>();
+                admin_pwd = doc["admin_pwd"].as<std::string>(); 
+            }
+        } else {
+            Serial.println("Admin credentials file not found, using default credentials");
+        }
+
+        if(username != admin_user || password != admin_pwd){
+            Serial.println("Invalid username or password");
+            res.status(401).text("Invalid username or password");
+            return;
+        }
+
+        JsonDocument doc;
+        doc["token"] = generateSHA256(username + randomString() + String(millis()).c_str());
+
+        res.status(200).json(doc);
     }
 
+    /**
+     ******************************************************************************
+     ******************************************************************************
+     * Handle WiFi config routes for admin panel
+     *
+     */
     inline void get_AdminWiFiConfig(Request const &req, Response &res)
     {
         ESP32WebServer::WiFiConfig wifiConfig = ESP32WebServer::getWiFiConfig();
@@ -605,20 +751,20 @@ namespace ESP32WebServer
 
     inline void post_AdminWiFiConfig(Request const &req, Response &res)
     {
-        if (req.jsonBody.isNull())
+        if (req.body.isNull())
         {
             res.status(400).text("Invalid JSON");
             return;
         }
 
-        if (!req.jsonBody["ssid"].is<std::string>() || !req.jsonBody["password"].is<std::string>())
+        if (!req.body["ssid"].is<std::string>() || !req.body["password"].is<std::string>())
         {
             res.status(400).text("Missing ssid or password");
             return;
         }
 
-        std::string ssid = req.jsonBody["ssid"].as<std::string>();
-        std::string password = req.jsonBody["password"].as<std::string>();
+        std::string ssid = req.body["ssid"].as<std::string>();
+        std::string password = req.body["password"].as<std::string>();
 
         ESP32WebServer::setWiFiConfig(ssid, password);
 
@@ -643,7 +789,7 @@ namespace ESP32WebServer
             add("GET", "/admin/wifi", get_AdminWiFiConfig);
             add("GET", "/admin/wifi/scan", get_AdminWiFiScan);
             add("POST", "/admin/wifi", post_AdminWiFiConfig);
-            add("POST", "/admin/restart", post_AdminRestart);   
+            add("POST", "/admin/restart", post_AdminRestart);
         }
     };
 }

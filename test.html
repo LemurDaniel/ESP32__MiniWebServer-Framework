@@ -1,457 +1,127 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Admin Panel</title>
-
+    <title>Admin Login</title>
     <style>
-        :root {
-            --bg-color: #f0f2f5;
-            --card-bg: #ffffff;
-            --text-main: #2c3e50;
-            --primary: #3498db;
-            --danger: #e74c3c;
-            --border-radius: 12px;
-        }
-
         body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
             margin: 0;
-            padding: 20px;
         }
 
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
         }
 
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 30px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #ddd;
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .uptime-display {
-            font-size: 0.9rem;
-            color: #7f8c8d;
-            font-weight: 500;
-        }
-
-        .uptime-display i {
-            color: var(--primary);
-            margin-right: 5px;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 25px;
-        }
-
-        .card {
-            background: var(--card-bg);
-            padding: 25px;
-            border-radius: var(--border-radius);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            position: relative;
-        }
-
-        .card h2 {
-            margin-top: 0;
-            font-size: 1rem;
-            color: #95a5a6;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .card h2 i {
-            color: var(--primary);
-            font-size: 1.2rem;
-        }
-
-        .info-group {
-            margin: 20px 0;
-        }
-
-        .label {
-            display: block;
-            font-size: 0.8rem;
-            color: #bdc3c7;
-            text-transform: uppercase;
-            font-weight: bold;
-        }
-
-        .value {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: var(--text-main);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 20px;
-            background: var(--primary);
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            transition: transform 0.1s, background 0.2s;
-        }
-
-        .btn:hover {
-            background: #2980b9;
-            transform: translateY(-1px);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-        }
-
-        .btn-danger:hover {
-            background: #c0392b;
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 1.5rem;
         }
 
         .form-group {
-            margin-top: 15px;
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
         }
 
         input {
             width: 100%;
-            padding: 10px;
-            margin: 8px 0 15px 0;
-            border: 1px solid #dcdde1;
-            border-radius: 6px;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
             box-sizing: border-box;
-            background: #f9f9f9;
         }
 
-        input:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: #fff;
-        }
-
-        select {
+        button {
             width: 100%;
-            padding: 10px;
-            margin: 8px 0 15px 0;
-            border: 1px solid #dcdde1;
-            border-radius: 6px;
-            box-sizing: border-box;
-            background: #f9f9f9;
+            padding: 0.75rem;
+            background-color: #007bff;
+            border: none;
+            border-radius: 4px;
+            color: white;
             font-size: 1rem;
-            color: var(--text-main);
             cursor: pointer;
+            transition: background 0.3s;
         }
 
-        select:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: #fff;
-        }
-
-        #wifi-form {
-            margin-top: 20px;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-            display: none;
-        }
-
-        .btn-row {
-            display: flex;
-            gap: 10px;
-            margin-top: 5px;
-        }
-
-        .btn-sm {
-            padding: 8px 14px;
-            font-size: 0.85rem;
-        }
-
-        .btn-secondary {
-            background: #7f8c8d;
-        }
-
-        .btn-secondary:hover {
-            background: #636e72;
-        }
-
-        .btn-success {
-            background: #27ae60;
-        }
-
-        .btn-success:hover {
-            background: #219a52;
-        }
-
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.45);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-overlay.visible {
-            display: flex;
-        }
-
-        .modal {
-            background: var(--card-bg);
-            border-radius: var(--border-radius);
-            padding: 35px 30px 25px;
-            max-width: 420px;
-            width: 90%;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            animation: pop-in 0.2s ease;
-        }
-
-        @keyframes pop-in {
-            from {
-                transform: scale(0.85);
-                opacity: 0;
-            }
-
-            to {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
-
-        .modal-icon {
-            font-size: 2.8rem;
-            color: var(--primary);
-            margin-bottom: 15px;
-        }
-
-        .modal h3 {
-            margin: 0 0 10px;
-            font-size: 1.25rem;
-            color: var(--text-main);
-        }
-
-        .modal p {
-            color: #7f8c8d;
-            font-size: 0.95rem;
-            margin: 0 0 25px;
-        }
-
-        .modal .btn-row {
-            justify-content: center;
+        button:hover {
+            background-color: #0056b3;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <header>
-            <div class="header-left">
-                <h1>Admin Dashboard</h1>
-                <div class="uptime-display">
-                    <i class="fa-solid fa-clock"></i>Up: <span id="uptime-value">0h 0m 0s</span>
-                </div>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button onclick="confirmRestart()" class="btn btn-success"><i class="fa-solid fa-power-off"></i> Restart
-                    Device</button>
-                <a href="/logout" class="btn btn-danger"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
-            </div>
-        </header>
 
-        <div class="grid">
-            <div class="card">
-                <h2><i class="fa-solid fa-wifi"></i> Network Connection</h2>
-                <div class="info-group">
-                    <span class="label">SSID</span>
-                    <div class="value" id="ssid-value">---</div>
-                </div>
-                <div class="info-group">
-                    <span class="label">Password</span>
-                    <div class="password" id="password-value">---</div>
-                </div>
-                <div class="info-group">
-                    <span class="label">Signal Strength</span>
-                    <div class="value"><i class="fa-solid fa-signal"></i> <span id="rssi-value">0</span></div>
-                </div>
-                <div class="info-group">
-                    <span class="label">IP Address</span>
-                    <div class="value" style="font-family: monospace; font-size: 1.1rem;" id="ip-value">0.0.0.0</div>
-                </div>
-                <button onclick="toggleWiFiForm()" class="btn"><i class="fa-solid fa-gear"></i> Change WiFi</button>
-                <div id="wifi-form">
-                    <div class="form-group">
-                        <label class="label">Network</label>
-                        <select id="wifi-ssid">
-                            <option value="">-- Scanning... --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="label">Password</label>
-                        <input type="text" id="wifi-password" placeholder="WiFi Password">
-                    </div>
-                    <div class="btn-row">
-                        <button onclick="postWiFiConfig()" class="btn btn-sm"><i class="fa-solid fa-floppy-disk"></i>
-                            Save</button>
-                        <button onclick="scanWiFi()" id="btnScanWiFi" class="btn btn-sm" style="background:#7f8c8d;"><i
-                                class="fa-solid fa-rotate"></i> Rescan</button>
-                    </div>
-                </div>
+    <div class="login-container">
+        <h2>Admin Bereich</h2>
+        <form id="form-login">
+            <div class="form-group">
+                <label for="username">Benutzername</label>
+                <input type="text" id="username" name="username" required>
             </div>
-
-            <div class="card">
-                <h2><i class="fa-solid fa-user-shield"></i> Security</h2>
-                <form action="/admin/update-auth" method="POST">
-                    <div class="form-group">
-                        <label class="label">Admin Username</label>
-                        <input type="text" name="admin_user" placeholder="Username" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="label">New Password</label>
-                        <input type="password" name="admin_pwd" placeholder="Leave empty to keep current">
-                    </div>
-                    <button type="submit" class="btn"><i class="fa-solid fa-floppy-disk"></i> Update Auth</button>
-                </form>
+            <div class="form-group">
+                <label for="password">Passwort</label>
+                <input type="password" id="password" name="password" required>
             </div>
-        </div>
-    </div>
-
-    <!-- WiFi saved popup -->
-    <div class="modal-overlay" id="modal-wifi-saved">
-        <div class="modal">
-            <div class="modal-icon"><i class="fa-solid fa-circle-check"></i></div>
-            <h3>WiFi gespeichert</h3>
-            <p>Die neue WLAN-Verbindung wird erst nach einem Neustart aktiv.</p>
-            <div class="btn-row">
-                <button onclick="closeModal('modal-wifi-saved')" class="btn btn-secondary btn-sm">Später</button>
-                <button onclick="doRestart()" class="btn btn-sm"><i class="fa-solid fa-power-off"></i> Jetzt
-                    neustarten</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Restart confirm popup -->
-    <div class="modal-overlay" id="modal-restart">
-        <div class="modal">
-            <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <h3>Gerät neustarten?</h3>
-            <p>Der ESP32 wird neu gestartet. Die Verbindung wird kurz unterbrochen.</p>
-            <div class="btn-row">
-                <button onclick="closeModal('modal-restart')" class="btn btn-secondary btn-sm">Abbrechen</button>
-                <button onclick="doRestart()" class="btn btn-danger btn-sm"><i class="fa-solid fa-power-off"></i>
-                    Neustarten</button>
-            </div>
-        </div>
+            <button type="submit">Einloggen</button>
+        </form>
     </div>
 
     <script>
-        function openModal(id) {
-            document.getElementById(id).classList.add('visible');
-        }
+        // Override form submission to send JSON data
+        window.onload = function () {
+            document.getElementById("form-login").onsubmit = function () {
+                postLogin();
+                return false;
+            };
+        };
 
-        function closeModal(id) {
-            document.getElementById(id).classList.remove('visible');
-        }
+        async function postLogin() {
+            const form = document.getElementById('form-login');
 
-        function confirmRestart() {
-            openModal('modal-restart');
-        }
-
-        function toggleWiFiForm() {
-            const form = document.getElementById('wifi-form');
-            const visible = form.style.display === 'block';
-            form.style.display = visible ? 'none' : 'block';
-            if (!visible) scanWiFi();
-        }
-
-        var scanWiFiRunning = false;
-        async function scanWiFi() {
-
-            if (scanWiFiRunning) return;
-            scanWiFiRunning = true;
-
-            const currentSSID = document.getElementById('ssid-value').innerText;
-            const select = document.getElementById('wifi-ssid');
-
-            select.innerHTML = '<option value="">-- Scanning... --</option>';
             try {
-                const res = await fetch('http://192.168.0.92/admin/wifi/scan');
+                const res = await fetch('admin/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: form.username.value,
+                        password: form.password.value
+                    })
+                });
+
                 const json = await res.json();
+                const token = json.token;
+                console.log('Login erfolgreich, Token:', token);
 
-                console.log("Available networks:", json.networks);
-                select.innerHTML = json.networks
-                    .filter(e => e.SSID != currentSSID)
-                    .map(e =>
-                        `<option value="${e.SSID}">(${e.SignalStrength}) ${e.SSID}</option>`
-                    ).join('');
-            } catch (e) {
-                console.error("Scan error", e);
-                select.innerHTML = '<option value="">-- Scan failed --</option>';
-            } finally {
-                scanWiFiRunning = false;
+                
             }
-        }
-
-        async function postWiFiConfig() {
-            const ssid = document.getElementById('wifi-ssid').value;
-            const password = document.getElementById('wifi-password').value;
-            if (!ssid) return;
-
-            await fetch('http://192.168.0.92/admin/wifi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ssid, password })
-            });
-            document.getElementById('wifi-form').style.display = 'none';
-            openModal('modal-wifi-saved');
-        }
-
-        async function doRestart() {
-            closeModal('modal-wifi-saved');
-            closeModal('modal-restart');
-            await fetch('http://192.168.0.92/admin/restart', { method: 'POST' }).catch(() => { });
-        }
-        async function loadWiFiConfig() {
-            try {
-                const res = await fetch('http://192.168.0.92/admin/wifi');
-                const json = await res.json();
-
-                document.getElementById('ssid-value').innerText = json.SSID || "N/A";
-                document.getElementById('password-value').innerText = json.Password || "Not Set";
-                document.getElementById('ip-value').innerText = json.IPAddress || "";
-                document.getElementById('rssi-value').innerText = json.SignalStrength || "0 dBm";
-            } catch (e) {
-                console.error("Fetch error", e);
+            catch (error) {
+                console.error('Fehler beim Login:', error);
             }
+
         }
-        window.onload = loadWiFiConfig;
-        setInterval(loadWiFiConfig, 10000);
+
     </script>
+
 </body>
 
 </html>

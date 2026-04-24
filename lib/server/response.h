@@ -166,10 +166,10 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response json(JsonDocument jsonBody)
+        Response json(JsonDocument bodyJson)
         {
             char body[2048];
-            serializeJson(jsonBody, body, sizeof(body));
+            serializeJson(bodyJson, body, sizeof(body));
 
             this->body = body;
             this->responseMode = "body";
