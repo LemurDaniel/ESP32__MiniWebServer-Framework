@@ -8,6 +8,20 @@
 
 namespace ESP32WebServer
 {
+
+    // Initialize static member variables
+    ESP32WebServer::MiniServer *ESP32WebServer::MiniServer::_instance = nullptr;
+    std::vector<ESP32WebServer::MiniServer::Connection> ESP32WebServer::MiniServer::connections;
+
+    ESP32WebServer::MiniServer *MiniServer::instance()
+    {
+        if (_instance == nullptr)
+        {
+            _instance = new MiniServer();
+        }
+        return _instance;
+    }
+
     /**
      ***********************************************
      ************************************************
@@ -17,19 +31,9 @@ namespace ESP32WebServer
      * - Listen for incoming connections
      *
      **/
-    MiniServer::MiniServer(const std::string &ip_addr, int port)
+    MiniServer::MiniServer()
     {
         is_running = false;
-
-        memset(&address, 0, sizeof(address));
-        address.sin_family = AF_INET;
-        if (inet_pton(AF_INET, ip_addr.c_str(), &address.sin_addr) <= 0)
-        {
-            Serial.println("Invalid IP address");
-            return;
-        }
-        address.sin_port = htons(port);
-        address_len = sizeof(address);
     }
     MiniServer::~MiniServer()
     {
@@ -52,45 +56,6 @@ namespace ESP32WebServer
         clearWiFiConfig();
     }
 
-    int MiniServer::startServer()
-    {
-        // Start WiFi setup, when 'connectWiFi' wasn't explicitly called before starting the server
-        // Server starts automatically on the first call to 'listenClient', so this ensures WiFi is set up before accepting any clients.
-        if (!isWiFiConnected())
-        {
-            Serial.println("Starting WiFi setup...");
-            setupWiFi();
-        }
-
-        server_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (server_socket < 0)
-        {
-            Serial.println("Failed to create socket");
-            return 1;
-        }
-
-        int opt = 1;
-        if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-        {
-            Serial.println("Failed to set socket options");
-            return 1;
-        }
-
-        if (bind(server_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
-        {
-            Serial.println("Failed to bind socket");
-            return 1;
-        }
-
-        if (listen(server_socket, 3) < 0)
-        {
-            Serial.println("Failed to listen on socket");
-            return 1;
-        }
-
-        return 0;
-    }
-
     /************************************************
      ************************************************
      * Listening for Clients:
@@ -99,35 +64,6 @@ namespace ESP32WebServer
      * - Handle the client requests (index serving, GET/POST handling, etc.)
      *
      **/
-    void MiniServer::listenClient()
-    {
-        if (!is_running)
-        {
-            if (startServer() != 0)
-            {
-                Serial.println("Failed to start server");
-                return;
-            }
-
-            is_running = true;
-            Serial.println("Server started and listening for clients...");
-
-            this->registerRouter(ESP32WebServer::AdminRouter());
-        }
-        
-        struct sockaddr_in client_addr;
-        socklen_t len = sizeof(client_addr);
-
-        int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &len);
-
-        if (client_socket < 0)
-        {
-            return;
-        }
-
-        handleClient(client_socket);
-    }
-
     void MiniServer::handleClient(int client_socket)
     {
         char buffer[1024];
@@ -136,7 +72,7 @@ namespace ESP32WebServer
 
         if (bytesRead <= 0)
         {
-            close(client_socket);
+            Serial.printf("Failed to read from client socket %d\n", client_socket);
             return;
         }
 
@@ -169,8 +105,6 @@ namespace ESP32WebServer
                 write(client_socket, header.c_str(), header.size());
                 write(client_socket, response.body.c_str(), response.body.size());
             }
-
-            close(client_socket);
         }
 
         else
@@ -180,7 +114,6 @@ namespace ESP32WebServer
             std::string header = response.getHeaders();
             write(client_socket, header.c_str(), header.size());
             write(client_socket, response.body.c_str(), response.body.size());
-            close(client_socket);
         }
     }
 
@@ -270,6 +203,167 @@ namespace ESP32WebServer
             Serial.printf("Registering route: %s %s\n", route.method.c_str(), route.path.c_str());
             addRoute(route.method, route.path, route.handler);
         }
+    }
+
+    /************************************************
+     ************************************************
+     * Handle multiple connections and cleanup:
+     *
+     **/
+    void MiniServer::workerTask(void *param)
+    {
+
+        MiniServer *server = static_cast<MiniServer *>(param);
+        int client_socket;
+
+        while (true)
+        {
+            // Hier wartet der Task, verbraucht 0% CPU währenddessen
+            if (xQueueReceive(server->handleQueue, &client_socket, portMAX_DELAY))
+            {
+                Serial.printf("Worker handling client on socket %d\n", client_socket);
+                // Update last active time for cleanup
+                server->handleClient(client_socket);
+
+                Serial.printf("Worker finished handling client on socket %d\n", client_socket);
+                close(client_socket);
+            }
+        }
+    }
+
+    void MiniServer::dispatcherTask(void *param)
+    {
+
+        MiniServer *server = static_cast<MiniServer *>(param);
+
+        while (true)
+        {
+
+            const int current_sec = millis() / 1000;
+
+            for (auto con = server->connections.begin(); con != server->connections.end();)
+            {
+                if (current_sec - con->last_active_sec > 30) // 30 seconds timeout
+                {
+                    Serial.printf("Removing inactive connection on socket %d\n", con->socket);
+                    con = server->connections.erase(con);
+                    close(con->socket);
+                }
+                else
+                {
+                    Serial.printf("Dispatching client on socket %d\n", con->socket);
+                    xQueueSend(server->handleQueue, &con->socket, 0);
+                    con->last_active_sec = millis() / 1000;
+                    server->connections.erase(con);
+                }
+            }
+
+            vTaskDelay(100 / portTICK_PERIOD_MS); // Small delay to prevent CPU hogging
+        }
+    }
+    void MiniServer::acceptClientTask(void *param)
+    {
+
+        // Accept is blocking, no further delay needed here.
+
+        MiniServer *server = static_cast<MiniServer *>(param);
+        const int server_socket = server->server_socket;
+
+        while (true)
+        {
+            struct sockaddr_in client_addr;
+            socklen_t len = sizeof(client_addr);
+
+            int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &len);
+
+            if (client_socket < 0)
+            {
+                return;
+            }
+            else if (connections.size() >= ESP32WebServer::CONNECTION_LIMIT)
+            {
+                Serial.println("Maximum connections reached. Rejecting new client.");
+                close(client_socket);
+            }
+            else
+            {
+                Serial.printf("Accepted new client on socket %d\n", client_socket);
+                Connection con;
+                con.socket = client_socket;
+                con.created_at_sec = millis() / 1000;
+                con.last_active_sec = millis() / 1000;
+                connections.push_back(con);
+            }
+        }
+    }
+
+    int MiniServer::start(std::string ip_addr, int port)
+    {
+
+        if (is_running)
+        {
+            Serial.println("Server is already running");
+            return 0;
+        }
+
+        this->registerRouter(ESP32WebServer::AdminRouter());
+
+        if (!isWiFiConnected())
+        {
+            Serial.println("Starting WiFi setup...");
+            setupWiFi();
+        }
+
+        memset(&address, 0, sizeof(address));
+        address.sin_family = AF_INET;
+        address.sin_port = htons(port);
+        address_len = sizeof(address);
+        if (inet_pton(AF_INET, ip_addr.c_str(), &address.sin_addr) <= 0)
+        {
+            Serial.println("Invalid IP address");
+            return 1;
+        }
+
+        server_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_socket < 0)
+        {
+            Serial.println("Failed to create socket");
+            return 1;
+        }
+
+        int opt = 1;
+        if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+        {
+            Serial.println("Failed to set socket options");
+            return 1;
+        }
+
+        if (bind(server_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
+        {
+            Serial.println("Failed to bind socket");
+            return 1;
+        }
+
+        if (listen(server_socket, 3) < 0)
+        {
+            Serial.println("Failed to listen on socket");
+            return 1;
+        }
+
+        Serial.println("Starting accept client task...");
+        xTaskCreatePinnedToCore(acceptClientTask, "accept", 8192, this, 1, NULL, 0);
+        Serial.println("Starting dispatcher task...");
+        xTaskCreatePinnedToCore(dispatcherTask, "dispatch", 8192, this, 1, NULL, 1);
+        Serial.println("Starting worker tasks...");
+        for (int i = 0; i < ESP32WebServer::WORKER_TASK_COUNT; i++)
+        {
+            std::string taskName = "worker" + std::to_string(i);
+            xTaskCreatePinnedToCore(workerTask, taskName.c_str(), 8192, this, 1, NULL, i % 2);    
+        }
+
+        Serial.println("Server started and listening for clients...");
+        is_running = true;
+        return 0;
     }
 
 }

@@ -30,13 +30,16 @@
 namespace ESP32WebServer
 {
 
+    const int WORKER_TASK_COUNT = 4;
+    const int CONNECTION_LIMIT = 5;
     const int BUFFER_SIZE = 30720;
 
     class MiniServer
     {
     public:
-        MiniServer(const std::string &ip_addr, int port);
-        ~MiniServer();
+        static ESP32WebServer::MiniServer *instance(); // Get the singleton instance
+
+        int start(std::string ip_addr, int port);
 
         // Connect to WiFi network via SSID (Name of WiFi) and password
         // If not used, the server will start in AP mode with SSID "ESP32_MiniWebServer" and a default admin page for WiFi configuration
@@ -54,28 +57,47 @@ namespace ESP32WebServer
         void addFile(const std::string &path, const std::string &file_path);
 
         // Register routes with method, path and handler function
-        void add(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler);
-        void get(const std::string &path, std::function<void(const Request&, Response&)> handler);
-        void post(const std::string &path, std::function<void(const Request&, Response&)> handler);
-        void put(const std::string &path, std::function<void(const Request&, Response&)> handler);
+        void add(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler);
+        void get(const std::string &path, std::function<void(const Request &, Response &)> handler);
+        void post(const std::string &path, std::function<void(const Request &, Response &)> handler);
+        void put(const std::string &path, std::function<void(const Request &, Response &)> handler);
         void registerRouter(const ESP32WebServer::Router &router);
 
     private:
+        static ESP32WebServer::MiniServer *_instance; // Singleton instance for static task functions
+        MiniServer();
+        ~MiniServer();
+
         struct sockaddr_in address;
         unsigned int address_len;
         int server_socket;
-
-        void closeServer();
-        int startServer();
         int is_running = false;
-        
+        void closeServer();
+
         void handleClient(int client_socket);
 
         // Map of path to file path for static file serving
         void serveFile(int client_socket, Response &res);
 
         // Map of "METHOD PATH" to handler function for dynamic routes
-        std::map<std::string, std::function<void(const Request&, Response&)>> routes;
-        void addRoute(const std::string &method, const std::string &path, std::function<void(const Request&, Response&)> handler);
+        std::map<std::string, std::function<void(const Request &, Response &)>> routes;
+        void addRoute(const std::string &method, const std::string &path, std::function<void(const Request &, Response &)> handler);
+
+        // Connection Management
+        struct Connection
+        {
+            int socket;
+
+            uint8_t created_at_sec;
+            uint8_t last_active_sec;
+        };
+        // Queue for incoming connections to be processed by worker threads
+        QueueHandle_t handleQueue = xQueueCreate(WORKER_TASK_COUNT, sizeof(Connection));
+        static void workerTask(void *param);
+
+        static std::vector<Connection> connections;
+        static void dispatcherTask(void *param);
+        static void acceptClientTask(void *param);
+        static void cleanupConnectionsTask(void *param);
     };
 }

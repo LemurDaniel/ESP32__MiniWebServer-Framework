@@ -4,24 +4,29 @@
 
 #include <routes/routes.example.h>
 
-ESP32WebServer::MiniServer Server = ESP32WebServer::MiniServer("0.0.0.0", 80);
-
 void setup()
 {
   Serial.begin(115200);
 
+  ESP32WebServer::MiniServer* Server = ESP32WebServer::MiniServer::instance();
+
   // Will start enter WiFi setup, if this function isn't used.
   // Credentials are permanently stored via LittleFs.
-  Server.connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "***<PASSWORD>***");
+  Server->connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "***<PASSWORD>***");
 
   // For testing purposes, remove WiFi config to trigger AP mode
-  // Server.clearWiFi();
+  // Server->clearWiFi();
 
-  Server.index("/web/index.html");
-  Server.registerRouter(routes_example::Router());
+  Server->index("/web/index.html");
+  Server->registerRouter(routes_example::Router());
+
+  Server->start("0.0.0.0", 80);
 }
 
 void loop()
 {
-  Server.listenClient();
+  while (true)
+  {
+    delay(10);
+  }
 }
