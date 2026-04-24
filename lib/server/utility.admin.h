@@ -865,6 +865,12 @@ namespace ESP32WebServer
         res.OK().text("WiFi config updated");
     }
 
+    inline void delete_AdminWiFiConfig(Request const &req, Response &res)
+    {
+        ESP32WebServer::clearWiFiConfig();
+        res.OK().text("WiFi config cleared");
+    }
+
     inline void post_AdminRestart(Request const &req, Response &res)
     {
         res.OK().text("Restarting...");
@@ -885,6 +891,7 @@ namespace ESP32WebServer
             add("GET", "/admin/wifi/scan", {is_Authenticated, get_AdminWiFiScan});
             add("POST", "/admin/wifi", {is_Authenticated, post_AdminWiFiConfig});
             add("POST", "/admin/restart", {is_Authenticated, post_AdminRestart});
+            add("DELETE", "/admin/wifi", {is_Authenticated, delete_AdminWiFiConfig});
         }
     };
 }
