@@ -16,8 +16,38 @@ namespace ESP32WebServer
         std::string method;
         std::string path;
         std::map<std::string, std::string> headers;
+        std::map<std::string, std::string> cookies;
         std::string bodyRaw; // Raw body as string
-        JsonDocument body; // Parsed JSON body (if applicable)
+        JsonDocument body;   // Parsed JSON body (if applicable)
+
+        static std::map<std::string, std::string> parseCookies(const std::string &cookieHeader)
+        {
+            std::map<std::string, std::string> cookies;
+            size_t start = 0;
+            while (start < cookieHeader.length())
+            {
+                size_t end = cookieHeader.find(';', start);
+                if (end == std::string::npos)
+                    end = cookieHeader.length();
+
+                std::string cookie = cookieHeader.substr(start, end - start);
+                size_t eqPos = cookie.find('=');
+                if (eqPos != std::string::npos)
+                {
+                    std::string key = cookie.substr(0, eqPos);
+                    std::string value = cookie.substr(eqPos + 1);
+                    // Trim whitespace
+                    key.erase(0, key.find_first_not_of(" \t"));
+                    key.erase(key.find_last_not_of(" \t") + 1);
+                    value.erase(0, value.find_first_not_of(" \t"));
+                    value.erase(value.find_last_not_of(" \t") + 1);
+
+                    cookies[key] = value;
+                }
+                start = end + 1;
+            }
+            return cookies;
+        }
 
         static Request parse(std::string requestRaw)
         {
@@ -32,6 +62,7 @@ namespace ESP32WebServer
             std::string path = requestLine.substr(firstSpace + 1, secondSpace - firstSpace - 1);
 
             // --- Extract headers ---
+            std::map<std::string, std::string> cookies = {};
             std::map<std::string, std::string> headers = {};
             size_t pos = requestRaw.find("\r\n") + 2; // Start after the request line
             while (true)
@@ -63,6 +94,12 @@ namespace ESP32WebServer
             request.path = path;
             request.bodyRaw = "";
             request.headers = headers;
+            request.cookies = cookies;
+
+            if (headers.find("Cookie") != headers.end())
+            {
+                request.cookies = parseCookies(headers["Cookie"]);
+            }
 
             // Body extrahieren (falls vorhanden)
             size_t headerEnd = requestRaw.find("\r\n\r\n");

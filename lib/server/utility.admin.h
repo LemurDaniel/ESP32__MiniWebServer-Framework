@@ -52,7 +52,7 @@ namespace ESP32WebServer
                     {
                         return true;
                     }
-                    ++token; 
+                    ++token;
                 }
             }
             return false;
@@ -724,11 +724,21 @@ namespace ESP32WebServer
 
     inline bool is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        // TODO: Implement proper authentication check using token
+        if (req.cookies.find("adminToken") == req.cookies.end())
+        {
+            res.status(401).text("Unauthorized: No token provided");
+            return false;
+        }
 
-        const std::string authToken = "TODO";
+        const std::string authToken = req.cookies.at("adminToken");
 
-        return TokenManager::instance().checkToken(authToken);
+        if (!TokenManager::instance().checkToken(authToken))
+        {
+            res.status(401).text("Unauthorized: Invalid or expired token");
+            return false;
+        }
+
+        return true;
     }
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)

@@ -239,10 +239,11 @@ namespace ESP32WebServer
         while (true)
         {
 
-            const int current_sec = millis() / 1000;
-
             for (auto con = server->connections.begin(); con != server->connections.end();)
             {
+                
+                const int current_sec = millis() / 1000;
+
                 if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
                 {
                     Serial.printf("Removing inactive connection on socket %d\n", con->socket);
@@ -358,7 +359,7 @@ namespace ESP32WebServer
         for (int i = 0; i < ESP32WebServer::WORKER_TASK_COUNT; i++)
         {
             std::string taskName = "worker" + std::to_string(i);
-            xTaskCreatePinnedToCore(workerTask, taskName.c_str(), 8192, this, 1, NULL, i % 2);    
+            xTaskCreatePinnedToCore(workerTask, taskName.c_str(), 8192, this, 1, NULL, i % 2);
         }
 
         Serial.println("Server started and listening for clients...");
