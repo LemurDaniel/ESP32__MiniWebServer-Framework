@@ -243,7 +243,7 @@ namespace ESP32WebServer
 
             for (auto con = server->connections.begin(); con != server->connections.end();)
             {
-                if (current_sec - con->last_active_sec > 30) // 30 seconds timeout
+                if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
                 {
                     Serial.printf("Removing inactive connection on socket %d\n", con->socket);
                     con = server->connections.erase(con);
