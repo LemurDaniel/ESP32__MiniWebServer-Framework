@@ -216,17 +216,6 @@ namespace ESP32WebServer
             gap: 15px;
         }
 
-        .uptime-display {
-            font-size: 0.9rem;
-            color: #7f8c8d;
-            font-weight: 500;
-        }
-
-        .uptime-display i {
-            color: var(--primary);
-            margin-right: 5px;
-        }
-
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -445,9 +434,6 @@ namespace ESP32WebServer
         <header>
             <div class="header-left">
                 <h1>Admin Dashboard</h1>
-                <div class="uptime-display">
-                    <i class="fa-solid fa-clock"></i>Up: <span id="uptime-value">0h 0m 0s</span>
-                </div>
             </div>
             <div style="display:flex; gap:10px;">
                 <button onclick="confirmRestart()" class="btn btn-success"><i class="fa-solid fa-power-off"></i> Restart
