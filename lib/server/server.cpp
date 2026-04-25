@@ -269,22 +269,22 @@ namespace ESP32WebServer
             for (auto con = server->connections.begin(); con != server->connections.end();)
             {
 
-                const int current_sec = millis() / 1000;
+                //const int current_sec = millis() / 1000;
 
-                if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
-                {
-                    Serial.printf("Removing inactive connection on socket %d\n", con->socket);
-                    con = server->connections.erase(con);
-                    shutdown(con->socket, SHUT_RDWR);
-                    close(con->socket);
-                }
-                else
-                {
+                //if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
+                //{
+                //    Serial.printf("Removing inactive connection on socket %d\n", con->socket);
+                //    con = server->connections.erase(con);
+                //    shutdown(con->socket, SHUT_RDWR);
+                //    close(con->socket);
+                //}
+                //else
+                //{
                     Serial.printf("Dispatching client on socket %d\n", con->socket);
                     xQueueSend(server->handleQueue, &con->socket, 0);
                     con->last_active_sec = millis() / 1000;
                     server->connections.erase(con);
-                }
+                //}
             }
 
             vTaskDelay(100 / portTICK_PERIOD_MS); // Small delay to prevent CPU hogging

@@ -32,7 +32,7 @@ namespace ESP32WebServer
 
     const int WORKER_TASK_COUNT = 4;
     const int CONNECTION_LIMIT = 5;
-    const int CONNECTION_TIMEOUT_SEC = 30;
+    const int CONNECTION_TIMEOUT_SEC = 5;
 
     class MiniServer
     {
