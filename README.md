@@ -45,8 +45,8 @@ It Should work with following families:
 ├── 📁 src/
 │   ├── 🎯 main.cpp                 # Main application entry
 │   └── 📁 routes/
-│       └── 🛤️ routes.test.h        # API route definitions
-│       └── 🛤️ routes.test.cpp      # API route Implementations
+│       └── 🛤️ routes.example.h     # API route definitions
+│       └── 🛤️ routes.example.cpp   # API route implementations
 ├── 📁 data/
 │   └── 📁 web/
 │       └── 🎨 index.html           # Web interface
@@ -104,14 +104,14 @@ It Should work with following families:
 3. **Update WiFi credentials** 🔐
    Edit `src/main.cpp` and update your WiFi settings:
    ```cpp
-   custom_utils::connectWiFi("YOUR_WIFI_NAME", "YOUR_PASSWORD");
+   Server->connectWiFi("YOUR_SSID", "YOUR_PASSWORD");
    ```
 
 4. **Build and Upload FileSystem (to push /data contents to ESP32)** 🔨
 
 ![PlatformIO.IO](.assets/pio.build-filesystem.png)
 
-5. **Use Plattform.IO to Upload and Monitor code from main.cpp** 🔨
+5. **Use PlatformIO to Upload and Monitor code from main.cpp** 🔨
 
 ![PlatformIO.IO](.assets/pio.upload-monitor.png)
 
@@ -120,37 +120,40 @@ It Should work with following families:
 ---
 
 <details>
-<summary>🛤️ Router System & Route Management</summary>
+<summary>🛤️ Router System</summary>
 
-### 📁 **Router File Structure**
+### Best Practices
 
-Routes are organized in separate header files within the `src/routes/` directory, each following a clean, consistent pattern:
-These Router Constructor can be registered on the server.
-
-```cpp
-#include <../lib/server/server.h>
-
-// Include the Router File
-#include <routes/routes.example.h>
-
-// Register Routes from the seperate Files
-Server.registerRouter(routes_example::Router());
+**Organize by functionality:**
+```
+src/routes/
+├── routes.sensors.h/.cpp   # 🌡️ Temperature, humidity, pressure
+├── routes.control.h/.cpp   # 💡 LED, relay, motor control
+├── routes.system.h/.cpp    # 📊 System info, diagnostics
+└── routes.auth.h/.cpp      # 🔐 Authentication & user management
 ```
 
-The included ```<routes/routes.example.h>``` header files defines all methods and the Router
+**Naming convention:**
+```cpp
+// Namespace: routes_{functionality}
+namespace routes_sensors { ... }
+
+// Functions: {method}_{endpoint}
+void get_temperature(const Request &req, Response &res) { ... }
+void post_led_control(const Request &req, Response &res) { ... }
+```
+
+### 1. Create the header file
+
+Declare handler functions and a `Router` class that registers them:
 
 ```cpp
-
-#include <Arduino.h>
-#include <WiFi.h>
-
 #include <../lib/server/router.h>
 
 namespace routes_example
 {
     void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
     void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
-    void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
     void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
 
     class Router : public ESP32WebServer::Router
@@ -158,169 +161,81 @@ namespace routes_example
     public:
         Router()
         {
-            add("GET", "/hello", get_hello);
-            add("GET", "/status", get_status);
-            add("GET", "/example", get_example);
-            add("POST", "/data", post_data);
-
-            // Multiple handlers can be added as middleware
-            // Calling res.finalize() stops the execution at that handler
-            add("GET", "/secret", {
-                authHandler,
-                get_secret
-            })
+            add("GET",  "/hello",  get_hello);
+            add("GET",  "/status", get_status);
+            add("POST", "/data",   post_data);
         }
     };
-
 }
 ```
 
-The Code ist implemented in the CPP-File including its Header-File
+### 2. Implement route handlers
+
+In the `.cpp`, include the header and implement each function:
 
 ```cpp
-
 #include <routes/routes.example.h>
 
 namespace routes_example
 {
     void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        res.text("Hello, World! This is a simple response from the ESP32.").status(200);
+        res.text("Hello from ESP32!").OK();
     }
 
     void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        JsonDocument status;
-
-        status["device"] = "ESP32";
-        status["firmware"] = "1.0.0";
-        status["uptime"] = static_cast<double>(millis());
-        status["free_heap"] = static_cast<double>(ESP.getFreeHeap());
-        status["wifi_rssi"] = static_cast<double>(WiFi.RSSI());
-
-        res.json(status).status(200);
-    }
-
-    void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
-    {
-        res.text("This is an example route!").status(200);
+        JsonDocument doc;
+        doc["device"]    = "ESP32";
+        doc["uptime"]    = static_cast<double>(millis());
+        doc["free_heap"] = static_cast<double>(ESP.getFreeHeap());
+        doc["wifi_rssi"] = static_cast<double>(WiFi.RSSI());
+        res.json(doc).OK();
     }
 
     void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        JsonDocument response;
-        response["message"] = "Data received successfully";
-        response["timestamp"] = millis();
-        res.json(response).status(201);
+        JsonDocument doc;
+        doc["message"]   = "Data received";
+        doc["timestamp"] = static_cast<double>(millis());
+        res.json(doc).status(201);
     }
-
 }
 ```
 
-#### ⚡ **Configure Routes on the Server**
+### 3. Register with the server
 
 ```cpp
 #include <Arduino.h>
-
 #include <../lib/server/server.h>
-
-// Include the Router File
 #include <routes/routes.example.h>
-
-ESP32WebServer::MiniServer Server = ESP32WebServer::MiniServer("0.0.0.0", 80);
 
 void setup()
 {
-  Serial.begin(115200);
+    Serial.begin(115200);
 
-  // Connect to your HOME WiFi Network
-  // This makes it directly reachable for any device in that network
-  Server.connectWiFi("FRITZ!Box 6591 TPLink 2,4_EXT2", "**secret-pwd**");
+    ESP32WebServer::MiniServer* Server = ESP32WebServer::MiniServer::instance();
 
-  // Set a path as index (Needs LittleFS as FileSystem)
-  Server.index("/web/index.html");
+    // Optional: connect to a WiFi network
+    // If omitted, the server starts in AP mode for WiFi configuration via the admin dashboard
+    Server->connectWiFi("YOUR_SSID", "YOUR_PASSWORD");
 
-  // Register Routes from the seperate Files
-  Server.registerRouter(routes_example::Router());
+    // Serve index.html at / (requires LittleFS filesystem upload)
+    Server->index("/web/index.html");
 
-  // Directly Configure Routes
-  // 🟢 GET routes
-  // Server.add("GET", "/sensors", get_sensor_data);
-  // Server.add("GET", "/system/info", get_system_info);
-    
-  // 🟡 POST routes
-  // Server.add("POST", "/led", post_led_control);
-  // Server.add("POST", "/config", post_configuration);
-    
-  // 🔵 PUT routes
-  // Server.add("PUT", "/settings", put_update_settings);
+    // Register all routes from a Router class
+    Server->registerRouter(routes_example::Router());
+
+    // Or add individual routes directly:
+    // Server->get("/sensors", get_sensor_data);
+    // Server->post("/led",    post_led_control);
+    // Server->put("/config",  put_update_settings);
+
+    // Start the server — spawns FreeRTOS tasks internally
+    Server->start("0.0.0.0", 80);
 }
-```
 
-### 🎨 **Route Organization Best Practices**
-
-#### **📂 Organize by Functionality**
-```
-src/routes/
-├── 🌡️ routes.sensors.h      # Temperature, humidity, pressure sensors
-├── 💡 routes.control.h      # LED, relay, motor control
-├── ⚙️ routes.system.h       # System info, diagnostics, configuration
-├── 🔐 routes.auth.h         # Authentication & user management
-├── 📊 routes.api.h          # General API endpoints
-└── 🧪 routes.test.h         # Testing & development routes
-```
-
-#### **🏷️ Consistent Naming Convention**
-```cpp
-// Namespace naming: routes_{functionality}
-namespace routes_sensors { ... }
-namespace routes_control { ... }
-namespace routes_system { ... }
-
-// Function naming: {method}_{endpoint_name}
-void get_temperature() { ... }
-void post_led_control() { ... }
-void put_system_config() { ... }
-```
-
-#### **📤 Sending Responses**
-
-Sending Response is simplified with lots of helper methods and automatic building of the response under the hood.
-
-```cpp
-void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res) {
-
-    // Immediatly sends the response back, skipping any following handlers
-    // For example an authHandler finalizes the response with status 401.
-    // No logic in the endpoint is needed, since the response is sent back as is.
-    res.status(401).finalize()
-
-    // 📝 Text response
-    res.text("Simple text response").status(200);
-    
-    // 📋 JSON response
-    JsonDocument jsonData;
-    jsonData["message"] = "Success";
-    jsonData["timestamp"] = millis();
-    res.json(jsonData).status(200);
-
-    // Or
-    res.json(jsonData).Ok();
-    
-    // 📁 File response
-    res.file("/web/data.json").status(200);
-    
-    // ❌ Error responses
-    res.text("Not found").status(404);
-    res.text("Internal error").status(500);
-
-    // Automatic 200 with some text
-    res.Ok()
-    // Automatic 404 with some text
-    res.NotFound()
-    // Automatic 500 Internal Server error
-    res.InternalServerError()
-}
+void loop() { delay(10); }
 ```
 
 </details>
@@ -328,9 +243,58 @@ void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &r
 ---
 
 <details>
-<summary>🔗 Middleware</summary>
+<summary>📤 Response Handling</summary>
 
-Middleware allows you to chain multiple handler functions for a single route. Each handler runs in order — if one calls `res.finalize()`, the chain stops immediately and no further handlers are executed.
+A Response object is provided and passed to all handler functions
+
+The response is sent automatically 
+- after the last handler finishes
+- or a response in the chain is finalized
+
+### Response types
+
+| Method | Content-Type | Example |
+|--------|-------------|---------|
+| `text(str)` | `text/plain` | `res.text("Hello").status(200)` |
+| `json(doc)` | `application/json` | `res.json(doc).status(200)` |
+| `html(str)` | `text/html` | `res.html("<h1>Hi</h1>").status(200)` |
+| `file(path)` | `text/html` | `res.file("/web/index.html")` |
+| `binaryFile(path)` | `application/octet-stream` | `res.binaryFile("/data.bin")` |
+
+### Status shorthands
+
+These set the status code and fill in a default body if none was set yet:
+
+| Method | Status | Default body |
+|--------|--------|-------------|
+| `OK()` | 200 | `"OK"` |
+| `NotFound()` | 404 | `"Not Found"` |
+| `InternalServerError()` | 500 | `"Internal Server Error"` |
+
+```cpp
+res.json(doc).OK();              // 200, JSON body
+res.text("Missing").NotFound();  // 404, custom text body
+res.text("Created").status(201); // any status code
+```
+
+### Stopping the middleware chain
+
+Call `finalize()` to prevent any further handlers from running — typically used in middleware:
+
+```cpp
+res.text("Unauthorized").status(401).finalize();
+```
+
+➡️ See **🔗 Middleware** below for full details.
+
+</details>
+
+---
+
+<details>
+<summary>🔗 Middleware Chain</summary>
+
+Middleware allows you to chain multiple handler functions for a single route. Each handler runs in order. Calling `res.finalize()`, stops processing further handlers in the chain
 
 ### **How it works**
 
@@ -338,7 +302,7 @@ Instead of a single `RequestHandler`, pass a `std::vector<RequestHandler>` to `a
 
 ```cpp
 add("GET", "/secret", {
-    authMiddleware,   // runs first — aborts with 401 if not authorized
+    authMiddleware,   // runs first — aborts with 401 if not authorized via finalize()
     get_secret        // only runs if authMiddleware did NOT finalize the response
 });
 ```
@@ -404,5 +368,7 @@ Request → authMiddleware
 | Authorization | Verify user role/permissions, abort with `403` |
 | Logging | Log request details, then call next handler without finalizing |
 | Rate Limiting | Track request counts, abort with `429` if threshold exceeded |
+
+➡️ See also: **📤 Response Handling** section above for all available response methods.
 
 </details>
