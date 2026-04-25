@@ -151,21 +151,33 @@ Declare handler functions and a `Router` class that registers them:
 #include <../lib/server/router.h>
 
 namespace routes_example
-{
-    void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
-    void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
-    void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
 
+
+#include <Arduino.h>
+#include <WiFi.h>
+
+#include <../lib/server/router.h>
+
+namespace routes_example
+{
     class Router : public ESP32WebServer::Router
     {
     public:
         Router()
         {
-            add("GET",  "/hello",  get_hello);
-            add("GET",  "/status", get_status);
-            add("POST", "/data",   post_data);
+            add("GET", "/hello", get_hello);
+            add("GET", "/status", get_status);
+            add("GET", "/example", get_example);
+            add("POST", "/data", post_data);
         }
+
+    private:
+        static void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+        static void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+        static void get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
+        static void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res);
     };
+
 }
 ```
 
@@ -174,32 +186,43 @@ namespace routes_example
 In the `.cpp`, include the header and implement each function:
 
 ```cpp
+
+
 #include <routes/routes.example.h>
 
 namespace routes_example
 {
-    void get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    void Router::get_hello(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        res.text("Hello from ESP32!").OK();
+        res.text("Hello, World! This is a simple response from the ESP32.").status(200);
     }
 
-    void get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    void Router::get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        JsonDocument doc;
-        doc["device"]    = "ESP32";
-        doc["uptime"]    = static_cast<double>(millis());
-        doc["free_heap"] = static_cast<double>(ESP.getFreeHeap());
-        doc["wifi_rssi"] = static_cast<double>(WiFi.RSSI());
-        res.json(doc).OK();
+        JsonDocument status;
+
+        status["device"] = "ESP32";
+        status["firmware"] = "1.0.0";
+        status["uptime"] = static_cast<double>(millis());
+        status["free_heap"] = static_cast<double>(ESP.getFreeHeap());
+        status["wifi_rssi"] = static_cast<double>(WiFi.RSSI());
+
+        res.json(status).status(200);
     }
 
-    void post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    void Router::get_example(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        JsonDocument doc;
-        doc["message"]   = "Data received";
-        doc["timestamp"] = static_cast<double>(millis());
-        res.json(doc).status(201);
+        res.text("This is an example route!").status(200);
     }
+
+    void Router::post_data(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        JsonDocument response;
+        response["message"] = "Data received successfully";
+        response["timestamp"] = millis();
+        res.json(response).status(201);
+    }
+
 }
 ```
 
@@ -370,5 +393,60 @@ Request → authMiddleware
 | Rate Limiting | Track request counts, abort with `429` if threshold exceeded |
 
 ➡️ See also: **📤 Response Handling** section above for all available response methods.
+
+</details>
+
+---
+
+<details>
+<summary>🛜 WiFi Handling & Admin Dashboard</summary>
+
+### WiFi Connection Priority
+
+Default Admin Credentials:
+> `Name:      admin`
+>
+> `Password:  admin`
+
+Default IP in AP-Mode: (Only valid when not connected to other WiFi!)
+> `192.168.4.1`
+
+The server follows this order when establishing a WiFi connection on startup:
+
+1. **Hardcoded credentials**
+    if `Server->connectWiFi("SSID", "PASSWORD")` is called in code, the device always connects to that network directly.
+
+2. **Config file**
+    if no call is made, the server looks for a saved WiFi config on the filesystem (written by the Admin Dashboard).
+
+3. **Hotspot / AP mode**
+    if no config file is found or the connection times out, the device falls back to Access Point mode with the default IP **`192.168.4.1`**. Connect to the ESP32's hotspot and open that address to configure WiFi via the Admin Dashboard.
+
+```cpp
+// Always connects to this network, skipping config file lookup
+// Omit the call to let the server fall back to config file / AP mode
+Server->connectWiFi("YOUR_SSID", "YOUR_PASSWORD");
+
+Server->start("0.0.0.0", 80);
+```
+
+### Admin Dashboard
+
+The built-in Admin Dashboard is available at `/admin` and provides:
+
+- **Network Connection**
+shows current SSID, signal strength, and IP address. Use **Change WiFi** to scan for nearby networks, pick one, enter the password, and save — the credentials are written to the config file so they persist across reboots.
+- **Security**
+update the admin username and password.
+- **Restart Device**
+trigger a reboot directly from the browser.
+
+![Admin Dashboard Overview](.assets/admin.dashboard.overview.png)
+
+#### Changing WiFi via the Dashboard
+
+Clicking **Change WiFi** expands a form showing all scanned networks (with signal strength). Select a network, enter the password, then hit **Save**. Use **Rescan** to refresh the list or **Clear** to erase the saved config.
+
+![Admin Dashboard WiFi](.assets/admin.dashboard.wifi.png)
 
 </details>
