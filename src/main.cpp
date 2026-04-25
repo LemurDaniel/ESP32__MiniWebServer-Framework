@@ -22,7 +22,7 @@ void setup()
   // Server->defaultAdminSalt("");
 
   // Disables admin routes entirly
-  Server->disableAdmin();
+  // Server->disableAdmin();
 
   Server->index("/web/index.html");
   Server->registerRouter(routes_example::Router());
