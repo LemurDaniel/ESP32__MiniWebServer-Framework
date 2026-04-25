@@ -56,6 +56,21 @@ namespace ESP32WebServer
         clearWiFiConfig();
     }
 
+    void MiniServer::disableAdmin()
+    {
+        is_admin_enabled = false;
+    }
+
+    void MiniServer::defaultAdminSalt(std::string salt)
+    {
+        setDefaultAdminSalt(salt);
+    }
+
+    void MiniServer::defaultAdminCredentials(std::string username, std::string password)
+    {
+        setDefaultAdminCredentials(username, password);
+    }
+
     /************************************************
      ************************************************
      * Listening for Clients:
@@ -167,9 +182,9 @@ namespace ESP32WebServer
      **/
     void MiniServer::index(const std::string &index_path)
     {
-        addFile("/", index_path);
-        addFile("/index", index_path);
-        addFile("/index.html", index_path);
+        staticFile("/", index_path);
+        staticFile("/index", index_path);
+        staticFile("/index.html", index_path);
     }
 
     void MiniServer::addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
@@ -181,7 +196,7 @@ namespace ESP32WebServer
         addRoute(method, path, std::vector<RequestHandler>{handler});
     }
 
-    void MiniServer::addFile(const std::string &path, const std::string &file_path)
+    void MiniServer::staticFile(const std::string &path, const std::string &file_path)
     {
         Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
 
@@ -192,7 +207,7 @@ namespace ESP32WebServer
         addRoute("GET", path, handler);
     }
 
-    void MiniServer::add(const std::string &method, const std::string &path, RequestHandler handler)
+    void MiniServer::route(const std::string &method, const std::string &path, RequestHandler handler)
     {
         addRoute(method, path, handler);
     }
@@ -210,6 +225,16 @@ namespace ESP32WebServer
     void MiniServer::put(const std::string &path, RequestHandler handler)
     {
         addRoute("PUT", path, handler);
+    }
+
+    void MiniServer::patch(const std::string &path, RequestHandler handler)
+    {
+        addRoute("PATCH", path, handler);
+    }
+
+    void MiniServer::del(const std::string &path, RequestHandler handler)
+    {
+        addRoute("DELETE", path, handler);
     }
 
     void MiniServer::registerRouter(const ESP32WebServer::Router &router)
@@ -269,21 +294,21 @@ namespace ESP32WebServer
             for (auto con = server->connections.begin(); con != server->connections.end();)
             {
 
-                //const int current_sec = millis() / 1000;
+                // const int current_sec = millis() / 1000;
 
-                //if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
+                // if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
                 //{
-                //    Serial.printf("Removing inactive connection on socket %d\n", con->socket);
-                //    con = server->connections.erase(con);
-                //    shutdown(con->socket, SHUT_RDWR);
-                //    close(con->socket);
-                //}
-                //else
+                //     Serial.printf("Removing inactive connection on socket %d\n", con->socket);
+                //     con = server->connections.erase(con);
+                //     shutdown(con->socket, SHUT_RDWR);
+                //     close(con->socket);
+                // }
+                // else
                 //{
-                    Serial.printf("Dispatching client on socket %d\n", con->socket);
-                    xQueueSend(server->handleQueue, &con->socket, 0);
-                    con->last_active_sec = millis() / 1000;
-                    server->connections.erase(con);
+                Serial.printf("Dispatching client on socket %d\n", con->socket);
+                xQueueSend(server->handleQueue, &con->socket, 0);
+                con->last_active_sec = millis() / 1000;
+                server->connections.erase(con);
                 //}
             }
 
@@ -337,7 +362,9 @@ namespace ESP32WebServer
             return 0;
         }
 
-        this->registerRouter(ESP32WebServer::AdminRouter());
+        if (is_admin_enabled) {
+            this->registerRouter(ESP32WebServer::AdminRouter());
+        }
 
         if (!isWiFiConnected())
         {

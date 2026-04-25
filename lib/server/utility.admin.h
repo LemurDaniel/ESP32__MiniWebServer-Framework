@@ -23,6 +23,12 @@ namespace ESP32WebServer
     class TokenManager
     {
     public:
+        std::string DEFAULT_ADMIN_USER = "admin";
+        std::string DEFAULT_ADMIN_PWD = "admin";
+
+        // TODO: Add salt 🧂 for password storage
+        std::string DEFAULT_ADMIN_SALT = "5B63F3F0104D1649B8E1A9C9E5F2A1"; // Random salt for password hashing
+
         static TokenManager &instance()
         {
             static TokenManager _instance;
@@ -67,12 +73,6 @@ namespace ESP32WebServer
 
         std::vector<std::pair<std::string, unsigned long>> ADMIN_TOKENS;
     };
-
-    const std::string DEFAULT_ADMIN_USER = "admin";
-    const std::string DEFAULT_ADMIN_PWD = "admin";
-
-    // TODO: Add salt 🧂 for password storage
-    const std::string DEFAULT_ADMIN_SALT = "5B63F3F0104D1649B8E1A9C9E5F2A1"; // Random salt for password hashing
 
     inline void get_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
@@ -222,10 +222,10 @@ namespace ESP32WebServer
         res.html(adminPage);
     }
 
-    // <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     inline void get_AdminDashboard(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
         std::string dashboardPage = R"html(
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -233,6 +233,8 @@ namespace ESP32WebServer
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 Admin Panel</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         :root {
@@ -701,6 +703,17 @@ namespace ESP32WebServer
     * Handle Login logic for admin panel
     *
     */
+    inline void setDefaultAdminCredentials(std::string username, std::string password)
+    {
+        TokenManager::instance().DEFAULT_ADMIN_USER = username;
+        TokenManager::instance().DEFAULT_ADMIN_PWD = password;
+    }
+
+    inline void setDefaultAdminSalt(std::string salt)
+    {
+        TokenManager::instance().DEFAULT_ADMIN_SALT = salt;
+    }
+
     inline std::string randomString()
     {
         std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -955,22 +968,22 @@ namespace ESP32WebServer
         AdminRouter()
         {
             // Perform login and return token
-            add("POST", "/admin/login", post_AdminLogin);
-            add("GET", "/admin/logged_in", verify_AdminAuth);
+            route("POST", "/admin/login", post_AdminLogin);
+            route("GET", "/admin/logged_in", verify_AdminAuth);
 
             // Returns the html sites
-            add("GET", "/admin", get_AdminLogin);
-            add("GET", "/admin/dashboard", {is_Authenticated, get_AdminDashboard});
+            route("GET", "/admin", get_AdminLogin);
+            route("GET", "/admin/dashboard", {is_Authenticated, get_AdminDashboard});
 
             // Return 401 if the token is not valid or missing for any /admin/* route
-            add("POST", "/admin/auth", {is_Authenticated, post_AdminUpdateAuth});
+            route("POST", "/admin/auth", {is_Authenticated, post_AdminUpdateAuth});
 
             // Wifi config routes for admin dashboard
-            add("GET", "/admin/wifi", {is_Authenticated, get_AdminWiFiConfig});
-            add("GET", "/admin/wifi/scan", {is_Authenticated, get_AdminWiFiScan});
-            add("POST", "/admin/wifi", {is_Authenticated, post_AdminWiFiConfig});
-            add("POST", "/admin/restart", {is_Authenticated, post_AdminRestart});
-            add("DELETE", "/admin/wifi", {is_Authenticated, delete_AdminWiFiConfig});
+            route("GET", "/admin/wifi", {is_Authenticated, get_AdminWiFiConfig});
+            route("GET", "/admin/wifi/scan", {is_Authenticated, get_AdminWiFiScan});
+            route("POST", "/admin/wifi", {is_Authenticated, post_AdminWiFiConfig});
+            route("POST", "/admin/restart", {is_Authenticated, post_AdminRestart});
+            route("DELETE", "/admin/wifi", {is_Authenticated, delete_AdminWiFiConfig});
         }
     };
 }

@@ -14,7 +14,7 @@
 ## Server / HTTP
 
 - [ ] **Route parameters** — support `/user/:id` style dynamic segments
-- [ ] **DELETE and PATCH direct methods** — only GET, POST, PUT wired up currently
+- [✅] **DELETE and PATCH direct methods** — only GET, POST, PUT wired up currently
 - [ ] **Connection timeout** — dispatcher task has the logic commented out (`server.cpp:271–288`), needs a clean implementation
 - [ ] **Chunked / streaming response** — large payloads currently buffered entirely in RAM
 - [ ] **CORS middleware** — built-in helper for cross-origin headers
@@ -22,6 +22,7 @@
 ## Security
 
 - [ ] **HTTPS / TLS** — optional TLS wrapper for the TCP socket
+- [ ] **Salt Hashin** — Use more modern approach for password hashing
 
 ## Developer Experience
 

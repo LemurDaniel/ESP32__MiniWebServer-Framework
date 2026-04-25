@@ -165,10 +165,10 @@ namespace routes_example
     public:
         Router()
         {
-            add("GET", "/hello", get_hello);
-            add("GET", "/status", get_status);
-            add("GET", "/example", get_example);
-            add("POST", "/data", post_data);
+            route("GET", "/hello", get_hello);
+            route("GET", "/status", get_status);
+            route("GET", "/example", get_example);
+            route("POST", "/data", post_data);
         }
 
     private:
@@ -250,6 +250,7 @@ void setup()
     Server->registerRouter(routes_example::Router());
 
     // Or add individual routes directly:
+    // Server->route("GET", "/sensors", get_sensor_data);
     // Server->get("/sensors", get_sensor_data);
     // Server->post("/led",    post_led_control);
     // Server->put("/config",  put_update_settings);
@@ -321,10 +322,10 @@ Middleware allows you to chain multiple handler functions for a single route. Ea
 
 ### **How it works**
 
-Instead of a single `RequestHandler`, pass a `std::vector<RequestHandler>` to `add()`:
+Instead of a single `RequestHandler`, pass a `std::vector<RequestHandler>` to `route()`:
 
 ```cpp
-add("GET", "/secret", {
+route("GET", "/secret", {
     authMiddleware,   // runs first — aborts with 401 if not authorized via finalize()
     get_secret        // only runs if authMiddleware did NOT finalize the response
 });
@@ -364,11 +365,11 @@ public:
     Router()
     {
         // Public routes — single handler
-        add("GET", "/hello", get_hello);
+        route("GET", "/hello", get_hello);
 
         // Protected routes — middleware chain
-        add("GET", "/secret",  { authMiddleware, get_secret  });
-        add("POST", "/config", { authMiddleware, post_config });
+        route("GET", "/secret",  { authMiddleware, get_secret  });
+        route("POST", "/config", { authMiddleware, post_config });
     }
 };
 ```
@@ -448,5 +449,20 @@ trigger a reboot directly from the browser.
 Clicking **Change WiFi** expands a form showing all scanned networks (with signal strength). Select a network, enter the password, then hit **Save**. Use **Rescan** to refresh the list or **Clear** to erase the saved config.
 
 ![Admin Dashboard WiFi](.assets/admin.dashboard.wifi.png)
+
+#### Additional Configuration
+
+Default admin credentials can be overridden in code.
+
+To disable the admin routes entirely call `disableAdmin()`.
+
+```cpp
+// Hardcode default credentials (Can be set via Dashboard without hardcoding!)
+// Server->defaultAdminCredentials("admin", "admin")
+// Server->defaultAdminSalt("")
+
+// Disables admin routes entirely
+// Server->disableAdmin()
+```
 
 </details>

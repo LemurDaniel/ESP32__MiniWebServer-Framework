@@ -12,10 +12,10 @@ namespace routes_example
     public:
         Router()
         {
-            add("GET", "/hello", get_hello);
-            add("GET", "/status", get_status);
-            add("GET", "/example", get_example);
-            add("POST", "/data", post_data);
+            route("GET", "/hello", get_hello);
+            route("GET", "/status", get_status);
+            route("GET", "/example", get_example);
+            route("POST", "/data", post_data);
         }
 
     private:

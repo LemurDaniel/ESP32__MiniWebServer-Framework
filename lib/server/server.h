@@ -54,14 +54,20 @@ namespace ESP32WebServer
         void index(const std::string &index_path);
 
         // Add a static file response for a specific path
-        void addFile(const std::string &path, const std::string &file_path);
+        void staticFile(const std::string &path, const std::string &file_path);
 
         // Register routes with method, path and handler function
-        void add(const std::string &method, const std::string &path, RequestHandler handler);
+        void registerRouter(const ESP32WebServer::Router &router);
+        void route(const std::string &method, const std::string &path, RequestHandler handler);
+
+        // Quick functions 
         void get(const std::string &path, RequestHandler handler);
         void post(const std::string &path, RequestHandler handler);
         void put(const std::string &path, RequestHandler handler);
-        void registerRouter(const ESP32WebServer::Router &router);
+        void patch(const std::string &path, RequestHandler handler);
+        // delete is a keyword in c++, hence using del
+        void del(const std::string &path, RequestHandler handler);
+
 
     private:
         static ESP32WebServer::MiniServer *_instance; // Singleton instance for static task functions
@@ -71,8 +77,15 @@ namespace ESP32WebServer
         struct sockaddr_in address;
         unsigned int address_len;
         int server_socket;
-        int is_running = false;
         void closeServer();
+
+        int is_running = false;
+        int is_admin_enabled = true;
+        // Disables the admin dashboard entirly
+        void disableAdmin();
+        // Overrides the default admin credentials
+        void defaultAdminSalt(std::string salt);
+        void defaultAdminCredentials(std::string username, std::string password);
 
         void handleClient(int client_socket);
 

@@ -27,15 +27,15 @@ namespace ESP32WebServer
 
         Router() {};
 
-        void add(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
+        void route(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
         {
             routes.push_back({method, path, handlers});
 
         }
 
-        void add(const std::string &method, const std::string &path, RequestHandler handler)
+        void route(const std::string &method, const std::string &path, RequestHandler handler)
         {
-            add(method, path, std::vector<RequestHandler>{handler});
+            route(method, path, std::vector<RequestHandler>{handler});
         }
 
     private:
