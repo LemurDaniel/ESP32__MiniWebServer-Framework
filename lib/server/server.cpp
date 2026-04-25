@@ -202,7 +202,19 @@ namespace ESP32WebServer
 
         auto handler = [file_path](const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
         {
+            std::string ext;
+            auto dot = file_path.find_last_of('.');
+            if (dot != std::string::npos)
+            {
+                ext = file_path.substr(dot);
+            }
+
             res.file(file_path);
+
+            if (ext == ".css")
+                res.header("Content-Type", "text/css");
+            else if (ext == ".html")
+                res.header("Content-Type", "text/html; charset=utf-8");
         };
         addRoute("GET", path, handler);
     }
@@ -362,7 +374,8 @@ namespace ESP32WebServer
             return 0;
         }
 
-        if (is_admin_enabled) {
+        if (is_admin_enabled)
+        {
             this->registerRouter(ESP32WebServer::AdminRouter());
         }
 

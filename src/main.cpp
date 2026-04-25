@@ -25,6 +25,8 @@ void setup()
   // Server->disableAdmin();
 
   Server->index("/web/index.html");
+  Server->staticFile("/main.css", "/web/main.css");
+
   Server->registerRouter(routes_example::Router());
 
   Server->start("0.0.0.0", 80);
