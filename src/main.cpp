@@ -3,6 +3,7 @@
 #include <../lib/server/server.h>
 
 #include <routes/routes.example.h>
+#include <routes/routes.server.manager.h>
 
 void setup()
 {
@@ -28,6 +29,7 @@ void setup()
   Server->index("/web/index.html");
 
   Server->registerRouter(routes_example::Router());
+  Server->registerRouter(routes_server_manager::Router());
 
   Server->start("0.0.0.0", 80);
 }
