@@ -23,6 +23,7 @@
 
 #include <ArduinoJson-v7.4.3.h>
 
+#include <utility.file.h>
 #include <utility.wifi.h>
 #include <utility.admin.h>
 #include <router.h>
@@ -50,8 +51,12 @@ namespace ESP32WebServer
         // May be executed on a different Thread or Core to avoid blocking the main loop
         void listenClient();
 
+
         // Serve a static file as index.html on the root path
         void index(const std::string &index_path);
+
+        // Serve all files in there as root;
+        void root(const std::string &folder_path);
 
         // Add a static file response for a specific path
         void staticFile(const std::string &path, const std::string &file_path);

@@ -17,6 +17,10 @@ namespace ESP32WebServer
     {
         if (_instance == nullptr)
         {
+            if (!LittleFS.begin())
+            {
+                throw std::runtime_error("LittleFS failed to mount");
+            }
             _instance = new MiniServer();
         }
         return _instance;
@@ -180,21 +184,6 @@ namespace ESP32WebServer
      * Serve index or handle GET/POST requests:
      *
      **/
-    void MiniServer::index(const std::string &index_path)
-    {
-        staticFile("/", index_path);
-        staticFile("/index", index_path);
-        staticFile("/index.html", index_path);
-    }
-
-    void MiniServer::addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
-    {
-        routes.insert({method + " " + path, handlers});
-    }
-    void MiniServer::addRoute(const std::string &method, const std::string &path, RequestHandler handler)
-    {
-        addRoute(method, path, std::vector<RequestHandler>{handler});
-    }
 
     void MiniServer::staticFile(const std::string &path, const std::string &file_path)
     {
@@ -217,6 +206,22 @@ namespace ESP32WebServer
                 res.header("Content-Type", "text/html; charset=utf-8");
         };
         addRoute("GET", path, handler);
+    }
+
+    void MiniServer::root(const std::string &folder_path)
+    {
+        std::vector<FileInfo> files = listFiles(folder_path);
+        for (FileInfo info : files)
+        {
+            staticFile("/" + info.name, info.path);
+        }
+    }
+
+    void MiniServer::index(const std::string &index_path)
+    {
+        staticFile("/", index_path);
+        staticFile("/index", index_path);
+        staticFile("/index.html", index_path);
     }
 
     void MiniServer::route(const std::string &method, const std::string &path, RequestHandler handler)
@@ -256,6 +261,15 @@ namespace ESP32WebServer
             Serial.printf("Registering route: %s %s\n", route.method.c_str(), route.path.c_str());
             addRoute(route.method, route.path, route.handler);
         }
+    }
+
+    void MiniServer::addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
+    {
+        routes.insert({method + " " + path, handlers});
+    }
+    void MiniServer::addRoute(const std::string &method, const std::string &path, RequestHandler handler)
+    {
+        addRoute(method, path, std::vector<RequestHandler>{handler});
     }
 
     /************************************************

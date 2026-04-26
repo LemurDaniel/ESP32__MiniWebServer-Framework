@@ -8,7 +8,7 @@ void setup()
 {
   Serial.begin(115200);
 
-  ESP32WebServer::MiniServer* Server = ESP32WebServer::MiniServer::instance();
+  ESP32WebServer::MiniServer *Server = ESP32WebServer::MiniServer::instance();
 
   // Will start enter WiFi setup, if this function isn't used.
   // Credentials are permanently stored via LittleFs.
@@ -24,8 +24,8 @@ void setup()
   // Disables admin routes entirly
   // Server->disableAdmin();
 
+  Server->root("/web");
   Server->index("/web/index.html");
-  Server->staticFile("/main.css", "/web/main.css");
 
   Server->registerRouter(routes_example::Router());
 

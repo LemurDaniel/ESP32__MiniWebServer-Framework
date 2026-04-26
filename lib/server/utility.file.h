@@ -16,13 +16,58 @@ namespace ESP32WebServer
 
     inline bool fileExists(const std::string &file_path)
     {
-        if (!LittleFS.begin(true)) // Format if mount fails
+        return LittleFS.exists(file_path.c_str());
+    }
+
+    struct FileInfo
+    {
+        std::string name;
+        std::string path;
+        std::string extension;
+        std::string baseName;
+    };
+
+    inline std::vector<FileInfo> listFiles(const std::string &folder_path, std::vector<FileInfo> &files, const std::string &prefix = "")
+    {
+        File folder = LittleFS.open(folder_path.c_str());
+        if (!folder || !folder.isDirectory())
         {
-            Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
-            return false;
+            throw std::runtime_error("Path is not a directory");
         }
 
-        return LittleFS.exists(file_path.c_str());
+        File file = folder.openNextFile();
+        while (file)
+        {
+            if (file.isDirectory())
+            {
+                listFiles(folder.path(), files, prefix + "/" + folder.name());
+                continue;
+            }
+
+            FileInfo info;
+            info.name = file.name();
+            info.path = file.path();
+            info.baseName = info.name;
+            info.extension = "";
+
+            size_t dot = info.name.find_last_of('.');
+            if (dot != std::string::npos && dot > 0)
+            {
+                info.extension = info.name.substr(dot);
+                info.baseName = info.name.substr(0, dot);
+            }
+
+            files.push_back(info);
+            file = folder.openNextFile();
+        }
+
+        return files;
+    }
+
+    inline std::vector<FileInfo> listFiles(const std::string &folder_path)
+    {
+        std::vector<FileInfo> files;
+        return listFiles(folder_path, files);
     }
 
     inline int removeFile(const std::string &file_path)
@@ -80,17 +125,10 @@ namespace ESP32WebServer
 
     inline bool writeJsonFile(const std::string &file_path, const JsonDocument &doc)
     {
-        if (!LittleFS.begin(true)) // Format if mount fails
-        {
-            Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
-            return false;
-        }
-
         File file = LittleFS.open(file_path.c_str(), "w");
         if (!file)
         {
-            Serial.printf("❌ CRITICAL: Failed to open JSON file %s for writing!\n", file_path.c_str());
-            return false;
+            throw "CRITICAL: Failed to open File to write";
         }
 
         char jsonStr[512];
