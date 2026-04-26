@@ -235,27 +235,27 @@ namespace routes_example
 
 void setup()
 {
-    Serial.begin(115200);
+    ESP32WebServer::MiniServer *Server = ESP32WebServer::MiniServer::instance();
 
-    ESP32WebServer::MiniServer* Server = ESP32WebServer::MiniServer::instance();
+    // Will start enter WiFi setup, if this function isn't used.
+    // Credentials are permanently stored via LittleFs.
+    // Server->connectWiFi("<SSID / Wlan Name >", "***<PASSWORD>***");
 
-    // Optional: connect to a WiFi network
-    // If omitted, the server starts in AP mode for WiFi configuration via the admin dashboard
-    Server->connectWiFi("YOUR_SSID", "YOUR_PASSWORD");
+    // For testing purposes, remove WiFi config to trigger AP mode
+    // Server->clearWiFi();
 
-    // Serve index.html at / (requires LittleFS filesystem upload)
+    // Hardcode default credentials (Can be set via Dashoard without hardcoding!)
+    // Server->defaultAdminCredentials("admin", "admin");
+    // Server->defaultAdminSalt("");
+
+    // Disables admin routes entirly
+    // Server->disableAdmin();
+
+    Server->root("/web");
     Server->index("/web/index.html");
 
-    // Register all routes from a Router class
     Server->registerRouter(routes_example::Router());
 
-    // Or add individual routes directly:
-    // Server->route("GET", "/sensors", get_sensor_data);
-    // Server->get("/sensors", get_sensor_data);
-    // Server->post("/led",    post_led_control);
-    // Server->put("/config",  put_update_settings);
-
-    // Start the server — spawns FreeRTOS tasks internally
     Server->start("0.0.0.0", 80);
 }
 
