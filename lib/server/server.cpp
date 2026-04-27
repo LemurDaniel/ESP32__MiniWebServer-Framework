@@ -8,24 +8,6 @@
 
 namespace ESP32WebServer
 {
-
-    // Initialize static member variables
-    ESP32WebServer::MiniServer *ESP32WebServer::MiniServer::_instance = nullptr;
-    std::vector<ESP32WebServer::MiniServer::Connection> ESP32WebServer::MiniServer::connections;
-
-    ESP32WebServer::MiniServer *MiniServer::instance()
-    {
-        if (_instance == nullptr)
-        {
-            if (!LittleFS.begin())
-            {
-                throw std::runtime_error("LittleFS failed to mount");
-            }
-            _instance = new MiniServer();
-        }
-        return _instance;
-    }
-
     /**
      ***********************************************
      ************************************************
@@ -37,7 +19,7 @@ namespace ESP32WebServer
      **/
     MiniServer::MiniServer()
     {
-        is_running = false;
+        _is_running = false;
     }
     MiniServer::~MiniServer()
     {
@@ -46,7 +28,7 @@ namespace ESP32WebServer
 
     void MiniServer::closeServer()
     {
-        close(server_socket);
+        close(_server_socket);
     }
 
     WiFiClass MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
@@ -62,7 +44,7 @@ namespace ESP32WebServer
 
     void MiniServer::disableAdmin()
     {
-        is_admin_enabled = false;
+        _is_admin_enabled = false;
     }
 
     void MiniServer::defaultAdminSalt(std::string salt)
@@ -286,7 +268,7 @@ namespace ESP32WebServer
         while (true)
         {
             // Hier wartet der Task, verbraucht 0% CPU währenddessen
-            if (xQueueReceive(server->handleQueue, &client_socket, portMAX_DELAY))
+            if (xQueueReceive(server->_handleQueue, &client_socket, portMAX_DELAY))
             {
                 // --- TIMEOUT SETUP START ---
                 struct timeval tv;
@@ -317,7 +299,7 @@ namespace ESP32WebServer
         while (true)
         {
 
-            for (auto con = server->connections.begin(); con != server->connections.end();)
+            for (auto con = server->_connections.begin(); con != server->_connections.end();)
             {
 
                 // const int current_sec = millis() / 1000;
@@ -332,9 +314,9 @@ namespace ESP32WebServer
                 // else
                 //{
                 Serial.printf("Dispatching client on socket %d\n", con->socket);
-                xQueueSend(server->handleQueue, &con->socket, 0);
+                xQueueSend(server->_handleQueue, &con->socket, 0);
                 con->last_active_sec = millis() / 1000;
-                server->connections.erase(con);
+                server->_connections.erase(con);
                 //}
             }
 
@@ -347,7 +329,7 @@ namespace ESP32WebServer
         // Accept is blocking, no further delay needed here.
 
         MiniServer *server = static_cast<MiniServer *>(param);
-        const int server_socket = server->server_socket;
+        const int server_socket = server->_server_socket;
 
         while (true)
         {
@@ -361,7 +343,7 @@ namespace ESP32WebServer
                 Serial.println("Failed to accept client connection");
                 return;
             }
-            else if (connections.size() >= ESP32WebServer::CONNECTION_LIMIT)
+            else if (server->_connections.size() >= ESP32WebServer::CONNECTION_LIMIT)
             {
                 Serial.println("Maximum connections reached. Rejecting new client.");
                 write(client_socket, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 19\r\n\r\nService Unavailable", 75);
@@ -374,21 +356,21 @@ namespace ESP32WebServer
                 con.socket = client_socket;
                 con.created_at_sec = millis() / 1000;
                 con.last_active_sec = millis() / 1000;
-                connections.push_back(con);
+                server->_connections.push_back(con);
             }
         }
     }
 
-    int MiniServer::start(std::string ip_addr, int port)
+    int MiniServer::start(int port, std::string ip_addr = "0.0.0.0")
     {
 
-        if (is_running)
+        if (_is_running)
         {
             Serial.println("Server is already running");
             return 0;
         }
 
-        if (is_admin_enabled)
+        if (_is_admin_enabled)
         {
             this->registerRouter(ESP32WebServer::AdminRouter());
         }
@@ -399,37 +381,37 @@ namespace ESP32WebServer
             setupWiFi();
         }
 
-        memset(&address, 0, sizeof(address));
-        address.sin_family = AF_INET;
-        address.sin_port = htons(port);
-        address_len = sizeof(address);
-        if (inet_pton(AF_INET, ip_addr.c_str(), &address.sin_addr) <= 0)
+        memset(&_address, 0, sizeof(_address));
+        _address.sin_family = AF_INET;
+        _address.sin_port = htons(port);
+        _address_len = sizeof(_address);
+        if (inet_pton(AF_INET, ip_addr.c_str(), &_address.sin_addr) <= 0)
         {
             Serial.println("Invalid IP address");
             return 1;
         }
 
-        server_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (server_socket < 0)
+        _server_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (_server_socket < 0)
         {
             Serial.println("Failed to create socket");
             return 1;
         }
 
         int opt = 1;
-        if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+        if (setsockopt(_server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
         {
             Serial.println("Failed to set socket options");
             return 1;
         }
 
-        if (bind(server_socket, (struct sockaddr *)&address, sizeof(address)) < 0)
+        if (bind(_server_socket, (struct sockaddr *)&_address, sizeof(_address)) < 0)
         {
             Serial.println("Failed to bind socket");
             return 1;
         }
 
-        if (listen(server_socket, 3) < 0)
+        if (listen(_server_socket, 3) < 0)
         {
             Serial.println("Failed to listen on socket");
             return 1;
@@ -447,7 +429,7 @@ namespace ESP32WebServer
         }
 
         Serial.println("Server started and listening for clients...");
-        is_running = true;
+        _is_running = true;
         return 0;
     }
 

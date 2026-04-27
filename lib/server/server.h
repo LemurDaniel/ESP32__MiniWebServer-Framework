@@ -38,9 +38,11 @@ namespace ESP32WebServer
     class MiniServer
     {
     public:
-        static MiniServer *instance(); // Get the singleton instance
+        MiniServer();
+        ~MiniServer();
 
-        int start(std::string ip_addr, int port);
+        int start(int port);
+        int start(int port, std::string ip_addr);
 
         // Connect to WiFi network via SSID (Name of WiFi) and password
         // If not used, the server will start in AP mode with SSID "ESP32_MiniWebServer" and a default admin page for WiFi configuration
@@ -50,7 +52,6 @@ namespace ESP32WebServer
         // This is a blocking call that listens for incoming client connections and handles them
         // May be executed on a different Thread or Core to avoid blocking the main loop
         void listenClient();
-
 
         // Serve a static file as index.html on the root path
         void index(const std::string &index_path);
@@ -65,7 +66,7 @@ namespace ESP32WebServer
         void registerRouter(const ESP32WebServer::Router &router);
         void route(const std::string &method, const std::string &path, RequestHandler handler);
 
-        // Quick functions 
+        // Quick functions
         void get(const std::string &path, RequestHandler handler);
         void post(const std::string &path, RequestHandler handler);
         void put(const std::string &path, RequestHandler handler);
@@ -73,19 +74,14 @@ namespace ESP32WebServer
         // delete is a keyword in c++, hence using del
         void del(const std::string &path, RequestHandler handler);
 
-
     private:
-        static MiniServer *_instance; // Singleton instance for static task functions
-        MiniServer();
-        ~MiniServer();
-
-        struct sockaddr_in address;
-        unsigned int address_len;
-        int server_socket;
+        struct sockaddr_in _address;
+        unsigned int _address_len;
+        int _server_socket;
         void closeServer();
 
-        int is_running = false;
-        int is_admin_enabled = true;
+        int _is_running = false;
+        int _is_admin_enabled = true;
         // Disables the admin dashboard entirly
         void disableAdmin();
         // Overrides the default admin credentials
@@ -111,10 +107,10 @@ namespace ESP32WebServer
             uint8_t last_active_sec;
         };
         // Queue for incoming connections to be processed by worker threads
-        QueueHandle_t handleQueue = xQueueCreate(WORKER_TASK_COUNT, sizeof(Connection));
+        QueueHandle_t _handleQueue = xQueueCreate(WORKER_TASK_COUNT, sizeof(Connection));
         static void workerTask(void *param);
 
-        static std::vector<Connection> connections;
+        std::vector<Connection> _connections;
         static void dispatcherTask(void *param);
         static void acceptClientTask(void *param);
         static void cleanupConnectionsTask(void *param);

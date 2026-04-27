@@ -235,7 +235,7 @@ namespace routes_example
 
 void setup()
 {
-    ESP32WebServer::MiniServer *Server = ESP32WebServer::MiniServer::instance();
+    ESP32WebServer::MiniServer *Server = new ESP32WebServer::MiniServer();
 
     // Will start enter WiFi setup, if this function isn't used.
     // Credentials are permanently stored via LittleFs.
@@ -256,7 +256,7 @@ void setup()
 
     Server->registerRouter(routes_example::Router());
 
-    Server->start("0.0.0.0", 80);
+    Server->start(80);
 }
 
 void loop() { delay(10); }
