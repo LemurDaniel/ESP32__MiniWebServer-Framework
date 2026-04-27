@@ -4,16 +4,88 @@
 
 #include <HTTPClient.h>
 #include <WiFiUdp.h>
+#include <WiFi.h>
 
 namespace routes_server_manager
 {
-    int Router::isShuttingDown = false;
-    int Router::isPoweringUp = false;
+
+    routes_server_manager::ServerState *ServerState::_instance = nullptr;
+    routes_server_manager::ServerState *ServerState::instance()
+    {
+        if (_instance == nullptr)
+        {
+            _instance = new ServerState();
+        }
+        return _instance;
+    }
+
+    void Router::statusTask(void *param)
+    {
+
+        ServerState *STATE = static_cast<ServerState *>(param);
+
+        while (true)
+        {
+
+            if (!WiFi.isConnected())
+            {
+                vTaskDelay(5 * 1000 / portTICK_PERIOD_MS);
+                continue;
+            }
+
+            HTTPClient http;
+            WiFiClientSecure client;
+
+            // Ignore Self-Signed SSL Certificate
+            client.setInsecure();
+            http.begin(client, "https://nfs.fritz.box");
+
+            int statusCode = http.GET();
+            STATE->isOnline = statusCode > 0;
+            Serial.print("https://nfs.fritz.box: ");
+            Serial.println(statusCode);
+            http.end();
+
+            if (STATE->isOnline && STATE->isPoweringUp)
+            {
+                STATE->isPoweringUp = false;
+                STATE->isShuttingDown = false;
+            }
+
+            if (!STATE->isOnline && STATE->isShuttingDown)
+            {
+                STATE->isPoweringUp = false;
+                STATE->isShuttingDown = false;
+            }
+
+            http.begin(client, "https://nfs.fritz.box/grafana");
+            STATE->grafana.isOnline = http.GET() > 0;
+            http.end();
+
+            http.begin(client, "https://nfs.fritz.box/guacamole");
+            STATE->gucacamole.isOnline = http.GET() > 0;
+            http.end();
+
+            http.begin(client, "https://nfs.fritz.box/gitea");
+            STATE->gitea.isOnline = http.GET() > 0;
+            http.end();
+
+            vTaskDelay(15 * 1000 / portTICK_PERIOD_MS);
+        }
+    }
 
     void Router::get_shutdown(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
 
-        if (isPoweringUp)
+        ServerState *STATE = ServerState::instance();
+
+        if (!STATE->isOnline)
+        {
+            res.status(403).text("Server is already offline");
+            return;
+        }
+
+        if (STATE->isPoweringUp)
         {
             res.status(403).text("Server is powering up");
             return;
@@ -31,7 +103,7 @@ namespace routes_server_manager
 
         if (http.GET() == 200)
         {
-            isShuttingDown = true;
+            STATE->isShuttingDown = true;
             res.OK().text("Sucessfully send shutdown");
         }
         else
@@ -44,7 +116,15 @@ namespace routes_server_manager
 
     void Router::get_startup(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        if (isShuttingDown)
+        ServerState *STATE = ServerState::instance();
+
+        if (STATE->isOnline)
+        {
+            res.status(403).text("Server is online");
+            return;
+        }
+
+        if (STATE->isShuttingDown)
         {
             res.status(403).text("Server is shutting down");
             return;
@@ -78,25 +158,23 @@ namespace routes_server_manager
         udp.write(packet, sizeof(packet));
         udp.endPacket();
 
+        STATE->isPoweringUp = true;
         res.OK().text("🪄 Magic Packet was sent");
     }
 
     void Router::get_status(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-        // Check if NFS Server is up and service health.
+        ServerState *STATE = ServerState::instance();
 
-        // TODO check server reachable
-        int serverOnline = true;
+        JsonDocument status;
 
-        if(isShuttingDown && !serverOnline) {
-            isShuttingDown = false;
-            isPoweringUp = false;
-        }
-        else if(isPoweringUp && serverOnline) {
-            isPoweringUp = false;
-            isShuttingDown = false;
-        }
+        status["online"] = STATE->isOnline;
+        status["poweringUp"] = STATE->isPoweringUp;
+        status["shuttingDown"] = STATE->isShuttingDown;
+        status["gitea"]["online"] = STATE->gitea.isOnline;
+        status["grafana"]["online"] = STATE->grafana.isOnline;
+        status["gucacamole"]["online"] = STATE->gucacamole.isOnline;
 
-        // TODO
+        res.json(status).status(200);
     }
 }

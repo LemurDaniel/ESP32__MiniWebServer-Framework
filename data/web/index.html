@@ -121,7 +121,7 @@
     <div class="section-label">Services</div>
 
     <div class="services-grid">
-        <a href="#" class="service-card">
+        <a href="https://nfs.fritz.box/guacamole" class="service-card">
             <div class="service-badge"></div>
             <div class="service-icon icon-guac">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -133,7 +133,7 @@
             <span class="service-desc">Remote Access</span>
         </a>
 
-        <a href="#" class="service-card">
+        <a href="https://nfs.fritz.box/grafana" class="service-card">
             <div class="service-badge"></div>
             <div class="service-icon icon-grafana">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -145,7 +145,7 @@
             <span class="service-desc">Monitoring</span>
         </a>
 
-        <a href="#" class="service-card">
+        <a href="https://nfs.fritz.box/gitea" class="service-card">
             <div class="service-badge"></div>
             <div class="service-icon icon-gitea">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -183,22 +183,8 @@
         };
 
         async function checkState() {
-            //await fetch("/server/status");
-            // TODO fetch via API
-            state = {
-                online: false,
-                shuttingDown: false,
-                poweringUp: false,
-                gitea: {
-                    online: false
-                },
-                guacamole: {
-                    online: false
-                },
-                grafana: {
-                    online: false
-                }
-            }
+            const res = await fetch("/server/status");
+            state = await res.json();
 
             const statusText = document.getElementById('status-text');
             const powerText = document.getElementById('power-button-text');
@@ -208,13 +194,11 @@
                 document.body.classList.remove('server-on')
                 statusText.innerHTML = "Offline"
                 powerText.textContent = "OFF"
-                state = "OFF"
             } else {
                 document.body.classList.remove('server-off')
                 document.body.classList.add('server-on')
                 statusText.innerHTML = "Online"
                 powerText.textContent = "ON"
-                state = "ON"
             }
 
             if (state.poweringUp) {
@@ -226,6 +210,7 @@
         }
 
         window.onload = checkState
+        setInterval(checkState, 5000)
     </script>
 </body>
 

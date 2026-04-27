@@ -38,7 +38,7 @@ namespace ESP32WebServer
     class MiniServer
     {
     public:
-        static ESP32WebServer::MiniServer *instance(); // Get the singleton instance
+        static MiniServer *instance(); // Get the singleton instance
 
         int start(std::string ip_addr, int port);
 
@@ -75,7 +75,7 @@ namespace ESP32WebServer
 
 
     private:
-        static ESP32WebServer::MiniServer *_instance; // Singleton instance for static task functions
+        static MiniServer *_instance; // Singleton instance for static task functions
         MiniServer();
         ~MiniServer();
 
