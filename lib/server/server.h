@@ -32,7 +32,7 @@ namespace ESP32WebServer
 {
 
     const int WORKER_TASK_COUNT = 4;
-    const int CONNECTION_LIMIT = 5;
+    const int CONNECTION_LIMIT = 10;
     const int CONNECTION_TIMEOUT_SEC = 5;
 
     class MiniServer
@@ -97,21 +97,9 @@ namespace ESP32WebServer
         void addRoute(const std::string &method, const std::string &path, RequestHandler handler);
         void addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers);
 
-        // Connection Management
-        struct Connection
-        {
-            int socket;
-
-            uint8_t created_at_sec;
-            uint8_t last_active_sec;
-        };
         // Queue for incoming connections to be processed by worker threads
-        QueueHandle_t _handleQueue = xQueueCreate(WORKER_TASK_COUNT, sizeof(Connection));
+        QueueHandle_t _handleQueue = xQueueCreate(CONNECTION_LIMIT, sizeof(int));
         static void workerTask(void *param);
-
-        std::vector<Connection> _connections;
-        static void dispatcherTask(void *param);
         static void acceptClientTask(void *param);
-        static void cleanupConnectionsTask(void *param);
     };
 }

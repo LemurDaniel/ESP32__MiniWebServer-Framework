@@ -132,15 +132,6 @@ namespace ESP32WebServer
 
         Response& binaryFile(const std::string &path)
         {
-            // Check if LittleFS is already mounted, if not, mount it
-            if (!LittleFS.begin(true)) // Format if mount fails
-            {
-                Serial.println("❌ CRITICAL: LittleFS mount failed completely!");
-                this->InternalServerError().text("Internal Server Error: Filesystem Unavailable");
-                return *this;
-            }
-
-            // Try to open the requested file
             File file = LittleFS.open(path.c_str(), "r");
             if (!file)
             {
@@ -175,12 +166,12 @@ namespace ESP32WebServer
             return *this;
         }
 
-        Response& json(JsonDocument bodyJson)
+        Response& json(const JsonDocument &bodyJson)
         {
-            char body[2048];
-            serializeJson(bodyJson, body, sizeof(body));
+            std::string jsonStr;
+            serializeJson(bodyJson, jsonStr);
 
-            this->body = body;
+            this->body = jsonStr;
             this->responseMode = "body";
             this->header("Content-Type", "application/json");
             return *this;

@@ -131,10 +131,10 @@ namespace ESP32WebServer
             throw "CRITICAL: Failed to open File to write";
         }
 
-        char jsonStr[512];
-        serializeJson(doc, jsonStr, sizeof(jsonStr));
+        std::string jsonStr;
+        serializeJson(doc, jsonStr);
 
-        file.print(jsonStr);
+        file.print(jsonStr.c_str());
         file.close();
 
         Serial.printf("✅ Successfully wrote JSON file %s\n", file_path.c_str());

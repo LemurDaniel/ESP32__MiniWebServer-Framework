@@ -91,11 +91,11 @@ namespace ESP32WebServer
         // Search for a matching route handler
         const std::string routeKey = request.method + " " + request.path;
 
-        if (routes.find(routeKey) != routes.end())
+        auto entry = routes.find(routeKey);
+        if (entry != routes.end())
         {
-            // Retrieve the handler function for the matched route and execute it
-            const auto route = routes[routeKey];
-            for (const auto &handler : route)
+            const std::vector<RequestHandler> &route = entry->second;
+            for (const RequestHandler &handler : route)
             {
                 handler(request, response);
 
@@ -139,7 +139,7 @@ namespace ESP32WebServer
         const std::string header = res.getHeaders();
         write(client_socket, header.c_str(), header.size());
 
-        char chunk[512];
+        char chunk[1460]; // TCP MTU-friendly chunk size
         size_t totalSent = 0;
 
         file.seek(0); // Ensure we start from the beginning
@@ -292,43 +292,8 @@ namespace ESP32WebServer
         }
     }
 
-    void MiniServer::dispatcherTask(void *param)
-    {
-
-        MiniServer *server = static_cast<MiniServer *>(param);
-
-        while (true)
-        {
-
-            for (auto con = server->_connections.begin(); con != server->_connections.end();)
-            {
-
-                // const int current_sec = millis() / 1000;
-
-                // if (current_sec - con->last_active_sec > CONNECTION_TIMEOUT_SEC)
-                //{
-                //     Serial.printf("Removing inactive connection on socket %d\n", con->socket);
-                //     con = server->connections.erase(con);
-                //     shutdown(con->socket, SHUT_RDWR);
-                //     close(con->socket);
-                // }
-                // else
-                //{
-                Serial.printf("Dispatching client on socket %d\n", con->socket);
-                xQueueSend(server->_handleQueue, &con->socket, 0);
-                con->last_active_sec = millis() / 1000;
-                server->_connections.erase(con);
-                //}
-            }
-
-            vTaskDelay(100 / portTICK_PERIOD_MS); // Small delay to prevent CPU hogging
-        }
-    }
     void MiniServer::acceptClientTask(void *param)
     {
-
-        // Accept is blocking, no further delay needed here.
-
         MiniServer *server = static_cast<MiniServer *>(param);
         const int server_socket = server->_server_socket;
 
@@ -344,20 +309,14 @@ namespace ESP32WebServer
                 Serial.println("Failed to accept client connection");
                 return;
             }
-            else if (server->_connections.size() >= ESP32WebServer::CONNECTION_LIMIT)
+
+            Serial.printf("Accepted new client on socket %d\n", client_socket);
+
+            if (xQueueSend(server->_handleQueue, &client_socket, 0) != pdTRUE)
             {
-                Serial.println("Maximum connections reached. Rejecting new client.");
+                Serial.println("Queue full! Rejecting new client.");
                 write(client_socket, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 19\r\n\r\nService Unavailable", 75);
                 close(client_socket);
-            }
-            else
-            {
-                Serial.printf("Accepted new client on socket %d\n", client_socket);
-                Connection con;
-                con.socket = client_socket;
-                con.created_at_sec = millis() / 1000;
-                con.last_active_sec = millis() / 1000;
-                server->_connections.push_back(con);
             }
         }
     }
@@ -419,9 +378,7 @@ namespace ESP32WebServer
         }
 
         Serial.println("Starting accept client task...");
-        xTaskCreatePinnedToCore(acceptClientTask, "accept", 8192, this, 1, NULL, 0);
-        Serial.println("Starting dispatcher task...");
-        xTaskCreatePinnedToCore(dispatcherTask, "dispatch", 8192, this, 1, NULL, 1);
+        xTaskCreatePinnedToCore(acceptClientTask, "accept", 4096, this, 2, NULL, 0);
         Serial.println("Starting worker tasks...");
         for (int i = 0; i < ESP32WebServer::WORKER_TASK_COUNT; i++)
         {
