@@ -130,9 +130,9 @@ namespace ESP32WebServer
             }
 
             activeWiFi.ssid = WiFi.SSID().c_str();
-            activeWiFi.ipAddress = WiFi.localIP();
             activeWiFi.signalStrength = WiFi.RSSI();
-
+            activeWiFi.ipAddress = WiFi.localIP().toString().c_str();
+            
             std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
             for (const WiFiConfig &config : savedNetworks)
             {

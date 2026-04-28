@@ -609,9 +609,12 @@ namespace ESP32WebServer
                         <input type="password" id="wifi-password" placeholder="WiFi Password">
                     </div>
                     <div class="btn-row">
-                        <button onclick="addNetwork()" class="btn btn-sm"><i class="fa-solid fa-floppy-disk"></i> Save</button>
-                        <button onclick="scanWiFi()" class="btn btn-sm btn-secondary"><i class="fa-solid fa-rotate"></i> Rescan</button>
-                        <button onclick="toggleAddForm(false)" class="btn btn-sm btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                        <button onclick="addNetwork()" class="btn btn-sm"><i class="fa-solid fa-floppy-disk"></i>
+                            Save</button>
+                        <button onclick="scanWiFi()" class="btn btn-sm btn-secondary"><i class="fa-solid fa-rotate"></i>
+                            Rescan</button>
+                        <button onclick="toggleAddForm(false)" class="btn btn-sm btn-secondary"><i
+                                class="fa-solid fa-xmark"></i> Cancel</button>
                     </div>
                 </div>
                 <div style="margin-top:15px;">
@@ -646,7 +649,8 @@ namespace ESP32WebServer
             <p>The network was added. Changes take effect after a restart.</p>
             <div class="btn-row">
                 <button onclick="closeModal('modal-wifi-saved')" class="btn btn-secondary btn-sm">Later</button>
-                <button onclick="doRestart()" class="btn btn-sm"><i class="fa-solid fa-power-off"></i> Restart Now</button>
+                <button onclick="doRestart()" class="btn btn-sm"><i class="fa-solid fa-power-off"></i> Restart
+                    Now</button>
             </div>
         </div>
     </div>
@@ -656,23 +660,12 @@ namespace ESP32WebServer
         <div class="modal">
             <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i></div>
             <h3>Restart device?</h3>
-            <p>The ESP32 will be restarted. The connection will be briefly interrupted.</p>
+            <p>The ESP32 will be restarted. The connection will be interrupted.</p>
             <div class="btn-row">
                 <button onclick="closeModal('modal-restart')" class="btn btn-secondary btn-sm">Cancel</button>
                 <button onclick="doRestart()" class="btn btn-danger btn-sm"><i class="fa-solid fa-power-off"></i>
                     Restart</button>
             </div>
-        </div>
-    </div>
-
-    <!-- WiFi cleared popup -->
-    <div class="modal-overlay" id="modal-wifi-cleared">
-        <div class="modal">
-            <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-trash"></i></div>
-            <h3>WiFi Configuration cleared</h3>
-            <p>Saved WiFi configuration has been cleared.</p>
-            <p>Will take effect after restart!</p>
-            <button onclick="closeModal('modal-wifi-cleared')" class="btn btn-secondary btn-sm">OK</button>
         </div>
     </div>
 
@@ -689,6 +682,10 @@ namespace ESP32WebServer
             openModal('modal-restart');
         }
 
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
         function toggleAddForm(open) {
             const form = document.getElementById('add-network-form');
             const btn = document.getElementById('btn-add-network');
@@ -697,49 +694,23 @@ namespace ESP32WebServer
             if (open) scanWiFi();
         }
 
-        function togglePasswordVisibility(btn, pwdSpan, plainPwd) {
-            const shown = btn.dataset.shown === '1';
-            if (shown) {
-                pwdSpan.textContent = '••••••••';
-                btn.innerHTML = '<i class="fa-solid fa-eye"></i>';
-                btn.dataset.shown = '0';
-            } else {
-                pwdSpan.textContent = plainPwd;
-                btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
-                btn.dataset.shown = '1';
-            }
+        async function doRestart() {
+            closeModal('modal-wifi-saved');
+            closeModal('modal-restart');
+            await fetch('/admin/restart', { method: 'POST' }).catch(() => { });
         }
 
-        function renderNetworkList(networks) {
-            const list = document.getElementById('network-list');
-            if (!networks || networks.length === 0) {
-                list.innerHTML = '<div style="color:#bdc3c7; font-size:0.9rem;">No saved networks.</div>';
-                return;
+        async function loadWiFiConfig() {
+            try {
+                const res = await fetch('/admin/wifi/active');
+                const json = await res.json();
+                document.getElementById('ssid-value').innerText = json.SSID || "N/A";
+                document.getElementById('password-value').innerText = json.Password || "Not Set";
+                document.getElementById('ip-value').innerText = json.IPAddress || "";
+                document.getElementById('rssi-value').innerText = json.SignalStrength || "0 dBm";
+            } catch (e) {
+                console.error("Fetch error", e);
             }
-            list.innerHTML = networks.map((net, i) => `
-                <div class="network-item" id="net-item-${i}">
-                    <div class="net-info">
-                        <div class="net-ssid">${escapeHtml(net.SSID)}</div>
-                        <div class="net-meta">
-                            <span><i class="fa-solid fa-signal"></i> ${escapeHtml(String(net.SignalStrength || 'N/A'))}</span>
-                            <span class="net-pwd" id="net-pwd-${i}">••••••••</span>
-                        </div>
-                    </div>
-                    <button class="btn-icon toggle-pwd" title="Show/hide password"
-                        data-shown="0"
-                        onclick="togglePasswordVisibility(this, document.getElementById('net-pwd-${i}'), ${JSON.stringify(net.Password || '')})">
-                        <i class="fa-solid fa-eye"></i>
-                    </button>
-                    <button class="btn-icon" title="Remove network"
-                        onclick="removeNetwork(${JSON.stringify(net.SSID)})">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
-                </div>
-            `).join('');
-        }
-
-        function escapeHtml(str) {
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
         var scanWiFiRunning = false;
@@ -768,7 +739,7 @@ namespace ESP32WebServer
             const password = document.getElementById('wifi-password').value;
             if (!ssid) return;
 
-            await fetch('/admin/wifi/networks', {
+            await fetch('/admin/wifi/network', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ssid, password })
@@ -782,27 +753,31 @@ namespace ESP32WebServer
 
         async function removeNetwork(ssid) {
             if (!confirm(`Remove "${ssid}" from saved networks?`)) return;
-            await fetch('/admin/wifi/networks/' + encodeURIComponent(ssid), { method: 'DELETE' }).catch(() => {});
+            await fetch('/admin/wifi/network', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ssid })
+            }).catch(() => { });
             loadNetworks();
         }
 
-        async function doRestart() {
-            closeModal('modal-wifi-saved');
-            closeModal('modal-restart');
-            await fetch('/admin/restart', { method: 'POST' }).catch(() => {});
-        }
-
-        async function loadWiFiConfig() {
-            try {
-                const res = await fetch('/admin/wifi');
-                const json = await res.json();
-                document.getElementById('ssid-value').innerText = json.SSID || "N/A";
-                document.getElementById('password-value').innerText = json.Password || "Not Set";
-                document.getElementById('ip-value').innerText = json.IPAddress || "";
-                document.getElementById('rssi-value').innerText = json.SignalStrength || "0 dBm";
-            } catch (e) {
-                console.error("Fetch error", e);
+        function renderNetworkList(networks) {
+            const list = document.getElementById('network-list');
+            if (!networks || networks.length === 0) {
+                list.innerHTML = '<div style="color:#bdc3c7; font-size:0.9rem;">No saved networks.</div>';
+                return;
             }
+            list.innerHTML = networks.map((net, i) => `
+                <div class="network-item" id="net-item-${i}">
+                    <div class="net-info">
+                        <div class="net-ssid">${escapeHtml(net.SSID)}</div>
+                    </div>
+                    <button class="btn-icon" title="Remove network"
+                        onclick="removeNetwork('${net.SSID}')">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
         }
 
         async function loadNetworks() {
@@ -1043,7 +1018,7 @@ namespace ESP32WebServer
         doc["IPAddress"] = wifiConfig.ipAddress;
         doc["Password"] = wifiConfig.password;
 
-        res.json(doc);
+        res.OK().json(doc);
     }
 
     inline void get_WiFiScan(Request const &req, Response &res)
@@ -1052,7 +1027,7 @@ namespace ESP32WebServer
 
         JsonDocument doc;
         JsonArray arr = doc["networks"].to<JsonArray>();
-        for (const auto &opt : options)
+        for (const WiFiConfig &opt : options)
         {
             JsonObject obj = arr.add<JsonObject>();
             obj["SSID"] = opt.ssid;
@@ -1060,10 +1035,46 @@ namespace ESP32WebServer
             obj["IPAddress"] = opt.ipAddress;
         }
 
-        res.json(doc);
+        res.OK().json(doc);
     }
 
-    inline void post_AdminWiFiConfig(Request const &req, Response &res)
+    inline void get_WiFiSavedNetworks(Request const &req, Response &res)
+    {
+        std::vector<ESP32WebServer::WiFiConfig> options = WiFiUtility::instance().getSavedNetworks();
+
+        JsonDocument doc;
+        JsonArray arr = doc["networks"].to<JsonArray>();
+        for (const WiFiConfig &opt : options)
+        {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["SSID"] = opt.ssid;
+            obj["SignalStrength"] = opt.signalStrength;
+            obj["IPAddress"] = opt.ipAddress;
+        }
+
+        res.OK().json(doc);
+    }
+
+    inline void delete_WiFiSavedNetwork(Request const &req, Response &res)
+    {
+        if (req.body.isNull())
+        {
+            res.status(400).text("Invalid JSON");
+            return;
+        }
+
+        if (req.body.isNull() || !req.body["ssid"].is<std::string>())
+        {
+            res.status(400).text("Missing ssid");
+            return;
+        }
+
+        std::string ssid = req.body["ssid"].as<std::string>();
+        WiFiUtility::instance().removeWiFiConfig(ssid);
+        res.OK().text("Network removed");
+    }
+
+    inline void post_WiFiSavedNetwork(Request const &req, Response &res)
     {
         if (req.body.isNull())
         {
@@ -1083,12 +1094,6 @@ namespace ESP32WebServer
         WiFiUtility::instance().addWiFiConfig(ssid, password);
 
         res.OK().text("WiFi config updated");
-    }
-
-    inline void delete_AdminWiFiConfig(Request const &req, Response &res)
-    {
-        WiFiUtility::instance().clearWiFiConfig();
-        res.OK().text("WiFi config cleared");
     }
 
     class AdminRouter : public ESP32WebServer::Router
@@ -1115,11 +1120,11 @@ namespace ESP32WebServer
             route("GET", "/admin/wifi/active", {is_Authenticated, get_WiFiActive});
 
             // Get all WiFi networks to possibly connect to
-            // route("GET", "/admin/wifi/networks", {is_Authenticated, get_WiFiActive});
+            route("GET", "/admin/wifi/networks", {is_Authenticated, get_WiFiSavedNetworks});
 
             // Add or Remove a WiFi-Config
-            // route("POST", "/admin/wifi/network", {is_Authenticated, get_WiFiActive});
-            // route("DELETE", "/admin/wifi/network", {is_Authenticated, get_WiFiActive});
+            route("POST", "/admin/wifi/network", {is_Authenticated, post_WiFiSavedNetwork});
+            route("DELETE", "/admin/wifi/network", {is_Authenticated, delete_WiFiSavedNetwork});
         }
     };
 }
