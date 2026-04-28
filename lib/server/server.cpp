@@ -83,9 +83,9 @@ namespace ESP32WebServer
         Request request = Request::parse(buffer);
         Response response = Response();
 
-        Serial.println("\n\n\n--- Raw HTTP Request ---");
-        Serial.println(buffer);
-        Serial.println("--------------------------");
+        // Serial.println("\n\n\n--- Raw HTTP Request ---");
+        // Serial.println(buffer);
+        // Serial.println("--------------------------");
 
         // Search for a matching route handler
         const std::string routeKey = request.method + " " + request.path;
