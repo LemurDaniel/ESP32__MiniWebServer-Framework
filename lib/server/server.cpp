@@ -32,15 +32,14 @@ namespace ESP32WebServer
         close(_server_socket);
     }
 
-    WiFiClass MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
+    void MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
     {
-        setupWiFi(ssid, password, true);
-        return WiFi;
+        WiFiUtility::instance().addWiFiConfig(ssid, password);
     }
 
     void MiniServer::clearWiFi()
     {
-        clearWiFiConfig();
+        WiFiUtility::instance().clearWiFiConfig();
     }
 
     void MiniServer::disableAdmin()
@@ -335,10 +334,9 @@ namespace ESP32WebServer
             this->registerRouter(ESP32WebServer::AdminRouter());
         }
 
-        if (!isWiFiConnected())
+        if (!WiFiUtility::instance().isNetworkReady())
         {
-            Serial.println("Starting WiFi setup...");
-            setupWiFi();
+            WiFiUtility::instance().setup();
         }
 
         memset(&_address, 0, sizeof(_address));
@@ -377,14 +375,18 @@ namespace ESP32WebServer
             return 1;
         }
 
-        Serial.println("Starting accept client task...");
-        xTaskCreatePinnedToCore(acceptClientTask, "accept", 4096, this, 2, NULL, 0);
         Serial.println("Starting worker tasks...");
         for (int i = 0; i < ESP32WebServer::WORKER_TASK_COUNT; i++)
         {
             std::string taskName = "worker" + std::to_string(i);
             xTaskCreatePinnedToCore(workerTask, taskName.c_str(), 8192, this, 1, NULL, i % 2);
         }
+
+        Serial.println("Starting accept client task...");
+        xTaskCreatePinnedToCore(acceptClientTask, "accept", 8192, this, 2, NULL, 0);
+
+        Serial.println("Starting WiFi manager task");
+        xTaskCreate(WiFiUtility::wifiManagerTask, "WiFiManager", 4096, nullptr, 1, nullptr);
 
         Serial.println("Server started and listening for clients...");
         _is_running = true;

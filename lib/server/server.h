@@ -45,12 +45,8 @@ namespace ESP32WebServer
 
         // Connect to WiFi network via SSID (Name of WiFi) and password
         // If not used, the server will start in AP mode with SSID "ESP32_MiniWebServer" and a default admin page for WiFi configuration
-        WiFiClass connectWiFi(const std::string &ssid, const std::string &password);
+        void connectWiFi(const std::string &ssid, const std::string &password);
         void clearWiFi();
-
-        // This is a blocking call that listens for incoming client connections and handles them
-        // May be executed on a different Thread or Core to avoid blocking the main loop
-        void listenClient();
 
         // Serve a static file as index.html on the root path
         void index(const std::string &index_path);

@@ -12,6 +12,7 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
 
 #include <utility.file.h>
 
@@ -20,179 +21,239 @@
 namespace ESP32WebServer
 {
 
-    // Will enter AP mode if connection cannot be established within this timeout.
-    const int WIFI_TIMEOUT_SEC = 30;
-    const std::string DEFAULT_WIFI_SSID = "ESP32_MiniWebServer";
-
     struct WiFiConfig
     {
         std::string ssid;
         std::string password;
-        std::string signalStrength;
-        std::string ipAddress;
+        int signalStrength = 0;
+        std::string ipAddress = "Not Connected";
     };
 
-    inline int isApMode()
+    class WiFiUtility
     {
-        return WiFi.getMode() == WIFI_AP;
-    }
+    private:
+        WiFiUtility() = default;
 
-    inline int isWiFiConnected()
-    {
-        return WiFi.status() == WL_CONNECTED;
-    }
+        const std::string DEFAULT_WIFI_SSID = "ESP32_MiniWebServer";
+        const int WIFI_TIMEOUT_SEC = 30;
 
-    inline void clearWiFiConfig()
-    {
-        removeFile(WIFI_CONFIG_FILE);
-    }
-
-    inline std::vector<WiFiConfig> scanNetworks()
-    {
-        std::vector<WiFiConfig> ssids;
-
-        int n = WiFi.scanNetworks();
-        for (int i = 0; i < n; ++i)
+    public:
+        static WiFiUtility &instance()
         {
-            WiFiConfig config;
-            config.ssid = WiFi.SSID(i).c_str();
-            config.signalStrength = std::to_string(WiFi.RSSI(i)) + " dBm";
-            config.ipAddress = ""; // IP address is not available during scan
-            ssids.push_back(config);
-
-            Serial.printf("Found network: %s (Signal: %s)\n", config.ssid.c_str(), config.signalStrength.c_str());
+            static WiFiUtility inst;
+            return inst;
         }
 
-        return ssids;
-    }
-
-    inline void setWiFiConfig(const std::string &ssid, const std::string &password)
-    {
-        JsonDocument wifiConfig;
-        wifiConfig["ssid"] = ssid;
-        wifiConfig["password"] = password;
-        writeJsonFile(WIFI_CONFIG_FILE, wifiConfig);
-    }
-
-    inline WiFiConfig getWiFiConfig()
-    {
-        JsonDocument wifiConfig;
-
-        if (fileExists(WIFI_CONFIG_FILE))
+        int isApMode()
         {
-            wifiConfig = readJsonFile(WIFI_CONFIG_FILE);
-        }
-        else
-        {
-            Serial.println("No WiFi config file found, returning default config...");
+            return WiFi.getMode() == WIFI_AP;
         }
 
-        WiFiConfig config;
-        config.ssid = wifiConfig["ssid"] | "Not Configured";
-        config.password = wifiConfig["password"] | "";
-
-        if (WiFi.status() == WL_CONNECTED)
+        int isWiFiConnected()
         {
-            config.signalStrength = std::to_string(WiFi.RSSI()) + std::string(" dBm");
-            ;
-            config.ipAddress = WiFi.localIP().toString().c_str();
-        }
-        else
-        {
-            config.signalStrength = wifiConfig["signalStrength"] | "0 dBm";
-            config.ipAddress = wifiConfig["ipAddress"] | " Not Connected";
+            return WiFi.status() == WL_CONNECTED;
         }
 
-        return config;
-    }
-
-    inline void setupWiFi(const std::string &ssid, const std::string &password, bool forceReconnect = false)
-    {
-
-        /**
-         * If a password and SSID are provided:
-         * - ESP32 will attempt to connect to the WiFi network using the provided credentials.
-         *
-         * If no password and SSID are provided:
-         * - ESP32 will check if a WiFi config file exists on the device with valid
-         *      If an WiFiConfig file exists
-         *      - will attempt to connect to the WiFi network using the credentials in the file
-         *
-         *      else
-         *      - will start in AP mode with SSID "ESP32_MiniWebServer".
-         *        Default Credentials for admin page:
-         *          Username: admin
-         *          Password: admin
-         *
-         **/
-
-        std::string ssidToUse = ssid;
-        std::string passwordToUse = password;
-
-        if (WiFi.status() == WL_CONNECTED && !forceReconnect)
+        bool isNetworkReady()
         {
-            Serial.println("Already connected to WiFi, skipping setup.");
-            return;
+            return WiFi.isConnected() || WiFi.getMode() == WIFI_AP;
         }
 
-        if (fileExists(WIFI_CONFIG_FILE) && ssidToUse.empty() && passwordToUse.empty())
+        void clearWiFiConfig()
         {
-            Serial.println("WiFi config file found, attempting to connect using stored credentials...");
-
-            WiFiConfig wifiConfig = getWiFiConfig();
-            ssidToUse = wifiConfig.ssid;
-            passwordToUse = wifiConfig.password;
+            removeFile(WIFI_CONFIG_FILE);
         }
-        else if (ssidToUse.empty() && passwordToUse.empty())
+
+        std::vector<WiFiConfig> scanNetworks()
         {
-            Serial.println("No WiFi credentials provided and no config file found, starting in AP mode...");
+            std::vector<WiFiConfig> ssids;
+
+            int n = WiFi.scanNetworks();
+            for (int i = 0; i < n; ++i)
+            {
+                WiFiConfig config;
+                config.ssid = WiFi.SSID(i).c_str();
+                config.signalStrength = WiFi.RSSI(i);
+                ssids.push_back(config);
+            }
+
+            return ssids;
+        }
+
+        std::vector<WiFiConfig> getSavedNetworks()
+        {
+            std::vector<WiFiConfig> savedNetworks;
+
+            if (!fileExists(WIFI_CONFIG_FILE))
+                return savedNetworks;
+
+            JsonDocument doc = readJsonFile(WIFI_CONFIG_FILE);
+            for (JsonPair entry : doc["networks"].as<JsonObject>())
+            {
+                WiFiConfig config;
+                config.ssid = entry.key().c_str();
+                config.password = entry.value()["password"] | "";
+                savedNetworks.push_back(config);
+            }
+
+            return savedNetworks;
+        }
+
+        void addWiFiConfig(const std::string &ssid, const std::string &password)
+        {
+            JsonDocument doc;
+            if (fileExists(WIFI_CONFIG_FILE))
+                doc = readJsonFile(WIFI_CONFIG_FILE);
+
+            doc["networks"][ssid]["password"] = password;
+
+            writeJsonFile(WIFI_CONFIG_FILE, doc);
+        }
+
+        void removeWiFiConfig(const std::string &ssid)
+        {
+            if (!fileExists(WIFI_CONFIG_FILE))
+                return;
+
+            JsonDocument doc = readJsonFile(WIFI_CONFIG_FILE);
+            doc["networks"].as<JsonObject>().remove(ssid.c_str());
+            writeJsonFile(WIFI_CONFIG_FILE, doc);
+        }
+
+        WiFiConfig getActiveWiFi()
+        {
+
+            WiFiConfig activeWiFi;
+            if (!isNetworkReady())
+            {
+                return activeWiFi;
+            }
+
+            activeWiFi.ssid = WiFi.SSID().c_str();
+            activeWiFi.ipAddress = WiFi.localIP();
+            activeWiFi.signalStrength = WiFi.RSSI();
+
+            std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
+            for (const WiFiConfig &config : savedNetworks)
+            {
+                if (config.ssid != activeWiFi.ssid)
+                    continue;
+                activeWiFi.password = config.password;
+            }
+
+            return activeWiFi;
+        }
+
+        std::vector<WiFiConfig> getNearestNetworks()
+        {
+            std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
+            std::vector<WiFiConfig> scannedNetworks = scanNetworks();
+            std::vector<WiFiConfig> nearbyNetworks;
+
+            for (const WiFiConfig &saved : savedNetworks)
+            {
+                for (const WiFiConfig &scanned : scannedNetworks)
+                {
+                    if (saved.ssid != scanned.ssid)
+                        continue;
+
+                    WiFiConfig match = saved;
+                    match.signalStrength = scanned.signalStrength;
+                    nearbyNetworks.push_back(match);
+                    break;
+                }
+            }
+
+            std::sort(nearbyNetworks.begin(), nearbyNetworks.end(), [](const WiFiConfig &a, const WiFiConfig &b)
+                      { return a.signalStrength > b.signalStrength; });
+
+            return nearbyNetworks;
+        }
+
+        /*
+        *******************************************************************
+        *******************************************************************
+        *** Task to setup WiFi
+
+        Continually checks every 30 seconds if the device is connected to a WiFi.
+        If it is NOT, then attempts its connection routine:
+
+        -> Find the nearest Saved network and connect to it
+        -> On Failure try the next network
+
+        -> Fallback to AP-Mode if
+            -> No Connection could be made
+            -> No saved network is nearby
+
+
+        */
+        bool attemptConnect(WiFiConfig network)
+        {
+            Serial.printf("Connecting to: %s (%d dBm)\n", network.ssid.c_str(), network.signalStrength);
+
+            WiFi.mode(WIFI_STA);
+            WiFi.begin(network.ssid.c_str(), network.password.c_str());
+
+            const int timeStart = millis() / 1000;
+            while (!WiFi.isConnected())
+            {
+                vTaskDelay(pdMS_TO_TICKS(500));
+                Serial.print(".");
+
+                if ((int)(millis() / 1000) - timeStart >= WIFI_TIMEOUT_SEC)
+                {
+                    Serial.println("\nConnection timed out.");
+                    WiFi.disconnect();
+                    return false;
+                }
+            }
+
+            Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
+            return true;
+        }
+
+        void setup()
+        {
+            if(isNetworkReady()) {
+                return;
+            }
+
+            std::vector<WiFiConfig> nearby = getNearestNetworks();
+            for (const WiFiConfig &network : nearby)
+            {
+                if (attemptConnect(network))
+                {
+                    return;
+                }
+            }
+
+            if (isNetworkReady())
+            {
+                return;
+            }
+
+            if (nearby.empty())
+            {
+                Serial.println("No saved networks in range, starting AP mode...");
+            }
+            else
+            {
+                Serial.println("No Connection could be made, starting in AP mode...");
+            }
 
             WiFi.mode(WIFI_AP);
             WiFi.softAP(DEFAULT_WIFI_SSID.c_str());
-            Serial.printf("Local IP: %s\n", WiFi.softAPIP().toString().c_str());
-            return;
-        }
-        else
-        {
-            Serial.println("WiFi credentials provided, writing to config file...");
-            setWiFiConfig(ssidToUse, passwordToUse);
+            Serial.printf("AP IP: %s\n", WiFi.softAPIP().toString().c_str());
         }
 
-        
-        WiFi.begin(ssidToUse.c_str(), passwordToUse.c_str());
-
-        const int timeStart = millis() / 1000;
-
-        Serial.printf("\nSSID: %s\n", ssidToUse.c_str());
-        Serial.print("Connecting to WiFi...");
-        while (WiFi.status() != WL_CONNECTED)
+        static void wifiManagerTask(void *param)
         {
-            delay(500);
-            Serial.print(".");
 
-            const int timeNow = millis() / 1000;
-            if (timeNow - timeStart >= WIFI_TIMEOUT_SEC)
+            while (true)
             {
-                Serial.println("Connection Failed! Timeout reached.");
-                WiFi.mode(WIFI_AP);
-                WiFi.softAP(DEFAULT_WIFI_SSID.c_str());
-                Serial.printf("Local IP: %s\n", WiFi.softAPIP().toString().c_str());
-                Serial.println("\nWiFi connection timed out, started in AP mode...");
-                return;
+                vTaskDelay(pdMS_TO_TICKS(30000));
+                WiFiUtility::instance().setup();
             }
         }
-
-        Serial.println("Connected!");
-        Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
-        Serial.printf("Signal Strength: %d dBm\n", WiFi.RSSI());
-        Serial.println();
-    }
-    inline void setupWiFi(const std::string &ssid, const std::string &password)
-    {
-        setupWiFi(ssid, password, false);
-    }
-    inline void setupWiFi()
-    {
-        setupWiFi("", "", false);
-    }
+    };
 }
