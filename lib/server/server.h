@@ -41,8 +41,7 @@ namespace ESP32WebServer
         MiniServer();
         ~MiniServer();
 
-        int start(int port);
-        int start(int port, std::string ip_addr);
+        int start(int port, std::string ip_addr = "0.0.0.0");
 
         // Connect to WiFi network via SSID (Name of WiFi) and password
         // If not used, the server will start in AP mode with SSID "ESP32_MiniWebServer" and a default admin page for WiFi configuration

@@ -20,6 +20,7 @@ namespace ESP32WebServer
     MiniServer::MiniServer()
     {
         _is_running = false;
+        LittleFS.begin(true);
     }
     MiniServer::~MiniServer()
     {
@@ -361,7 +362,7 @@ namespace ESP32WebServer
         }
     }
 
-    int MiniServer::start(int port, std::string ip_addr = "0.0.0.0")
+    int MiniServer::start(int port, std::string ip_addr)
     {
 
         if (_is_running)
