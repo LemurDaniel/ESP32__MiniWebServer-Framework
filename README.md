@@ -69,9 +69,8 @@ It Should work with following families:
 ### **Accessing the Web Interface**
 
 1. Connect your ESP32 to power
-2. Wait for WiFi connection
-3. Find the ESP32's IP address in serial monitor
-4. Open your browser and navigate to `http://ESP32_IP_ADDRESS`
+2. Check the serial monitor — either the IP address is printed (WiFi connected) or the device started in AP mode (`192.168.4.1`)
+3. Open your browser and navigate to the IP address
 
 ### **Example API Endpoints**
 
@@ -93,7 +92,7 @@ It Should work with following families:
 - ✅ [PlatformIO IDE](https://platformio.org/platformio-ide)
 - ✅ ESP32 development board
 - ✅ USB cable for programming 🔌
-- ✅ WiFi network 📶
+- ✅ WiFi network (optional — can configure via AP mode) 📶
 
 ### Installation
 
@@ -101,11 +100,12 @@ It Should work with following families:
 
 2. **Install Plattfrom.IO Extension** 💾
 
-3. **Update WiFi credentials** 🔐
-   Edit `src/main.cpp` and update your WiFi settings:
+3. **Configure WiFi** 🔐
+   Either call `connectWiFi()` in `src/main.cpp` to pre-save credentials:
    ```cpp
    Server->connectWiFi("YOUR_SSID", "YOUR_PASSWORD");
    ```
+   Or skip this step — the device will start in AP mode (`192.168.4.1`) and you can configure WiFi via the Admin Dashboard at `/admin`.
 
 4. **Build and Upload FileSystem (to push /data contents to ESP32)** 🔨
 
@@ -148,11 +148,6 @@ void post_led_control(const Request &req, Response &res) { ... }
 Declare handler functions and a `Router` class that registers them:
 
 ```cpp
-#include <../lib/server/router.h>
-
-namespace routes_example
-
-
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -244,11 +239,11 @@ void setup()
     // For testing purposes, remove WiFi config to trigger AP mode
     // Server->clearWiFi();
 
-    // Hardcode default credentials (Can be set via Dashoard without hardcoding!)
+    // Hardcode default credentials (Can be set via Dashboard without hardcoding!)
     // Server->defaultAdminCredentials("admin", "admin");
     // Server->defaultAdminSalt("");
 
-    // Disables admin routes entirly
+    // Disables admin routes entirely
     // Server->disableAdmin();
 
     Server->root("/web");
@@ -402,7 +397,7 @@ Request → authMiddleware
 <details>
 <summary>🛜 WiFi Handling & Admin Dashboard</summary>
 
-### WiFi Connection Priority
+### WiFi Connection Behavior
 
 Default Admin Credentials:
 > `Name:      admin`
@@ -412,23 +407,28 @@ Default Admin Credentials:
 Default IP in AP-Mode: (Only valid when not connected to other WiFi!)
 > `192.168.4.1`
 
-The server follows this order when establishing a WiFi connection on startup:
+On `Server->start()` the connection routine runs immediately. Every **30 seconds** afterwards, if the device is no longer connected, the routine runs again automatically.
 
-1. **Hardcoded credentials**
-    if `Server->connectWiFi("SSID", "PASSWORD")` is called in code, the device always connects to that network directly.
+**Connection routine:**
 
-2. **Config file**
-    if no call is made, the server looks for a saved WiFi config on the filesystem (written by the Admin Dashboard).
+1. **Scan** for nearby networks and intersect with all saved networks (from config file).
+2. **Sort** matches by signal strength for the strongest network.
+3. **Connect** to each candidate in order (30-second timeout per attempt).
+4. **Fallback to AP mode** (`ESP32_MiniWebServer`, IP `192.168.4.1`) if no saved network is in range or all connection attempts fail.
 
-3. **Hotspot / AP mode**
-    if no config file is found or the connection times out, the device falls back to Access Point mode with the default IP **`192.168.4.1`**. Connect to the ESP32's hotspot and open that address to configure WiFi via the Admin Dashboard.
+Networks are saved to the config file on LittleFS. Both `connectWiFi()` in code and the Admin Dashboard write to the same config — **multiple networks can be saved** and the device will always prefer whichever has the strongest signal at that moment.
 
 ```cpp
-// Always connects to this network, skipping config file lookup
-// Omit the call to let the server fall back to config file / AP mode
-Server->connectWiFi("YOUR_SSID", "YOUR_PASSWORD");
+// Saves credentials to config file
+// Multiple calls save multiple networks
+// Preferably set via Admin Dashboard
+Server->connectWiFi("HOME_SSID", "HOME_PASSWORD");
+Server->connectWiFi("OFFICE_SSID", "OFFICE_PASSWORD");
 
-Server->start("0.0.0.0", 80);
+// Remove all saved networks (triggers AP mode fallback)
+// Server->clearWiFi();
+
+Server->start(80);
 ```
 
 ### Admin Dashboard
