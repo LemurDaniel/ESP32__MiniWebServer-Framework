@@ -115,6 +115,27 @@ It Should work with following families:
 
 ![PlatformIO.IO](.assets/pio.upload-monitor.png)
 
+### WiFi Connection Behavior
+
+Default Admin Credentials:
+> `Name:      admin`
+>
+> `Password:  admin`
+
+Default IP in AP-Mode: (Only valid when not connected to other WiFi!)
+> `192.168.4.1`
+
+On `Server->start()` the connection routine runs immediately. Every **30 seconds** afterwards, if the device is no longer connected, the routine runs again automatically.
+
+**Connection routine:**
+
+1. **Scan** for nearby networks and intersect with all saved networks (from config file).
+2. **Sort** matches by signal strength for the strongest network.
+3. **Connect** to each candidate in order (30-second timeout per attempt).
+4. **Fallback to AP mode** (`ESP32_MiniWebServer`, IP `192.168.4.1`) if no saved network is in range or all connection attempts fail.
+
+Networks are saved to the config file on LittleFS. Both `connectWiFi()` in code and the Admin Dashboard write to the same config — **multiple networks can be saved** and the device will always prefer whichever has the strongest signal at that moment.
+
 </details>
 
 ---
