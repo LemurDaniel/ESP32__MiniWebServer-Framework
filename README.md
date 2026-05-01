@@ -463,8 +463,6 @@ update the admin username and password.
 - **Restart Device**
 trigger a reboot directly from the browser.
 
-![Admin Dashboard Overview](.assets/admin.dashboard.overview.png)
-
 #### Changing WiFi via the Dashboard
 
 Clicking **Change WiFi** expands a form showing all scanned networks (with signal strength). Select a network, enter the password, then hit **Save**. Use **Rescan** to refresh the list or **Clear** to erase the saved config.
