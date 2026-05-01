@@ -807,16 +807,6 @@ namespace ESP32WebServer
     * Handle Login logic for admin panel
     *
     */
-    inline void setDefaultAdminCredentials(std::string username, std::string password)
-    {
-        TokenManager::instance().DEFAULT_ADMIN_USER = username;
-        TokenManager::instance().DEFAULT_ADMIN_PWD = password;
-    }
-
-    inline void setDefaultAdminSalt(std::string salt)
-    {
-        TokenManager::instance().DEFAULT_ADMIN_SALT = salt;
-    }
 
     inline std::string randomString()
     {
@@ -855,12 +845,11 @@ namespace ESP32WebServer
         return hashStr;
     }
 
-    /**
-    ******************************************************************************
-    ******************************************************************************
-    * Handle Login route for admin panel
-    *
-    */
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Helper Handlers authentication
+     *
+     **/
 
     inline bool isTokenValid(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
@@ -895,23 +884,14 @@ namespace ESP32WebServer
         }
     }
 
-    inline void is_Authenticated(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
-    {
-        if (!isTokenValid(req, res))
-        {
-            res.header("Location", "/admin").status(302).text("Unauthorized: No token provided").finalize();
-        }
-    }
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Request Handlers Authentication
+     *
+     **/
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
-
-        if (req.body.isNull())
-        {
-            Serial.println("Invalid JSON in login request");
-            res.status(400).text("Invalid JSON");
-            return;
-        }
 
         if (!req.body["username"].is<std::string>() && !req.body["password"].is<std::string>())
         {
@@ -973,11 +953,6 @@ namespace ESP32WebServer
 
     inline void post_AdminUpdateAuth(Request const &req, Response &res)
     {
-        if (req.body.isNull())
-        {
-            res.status(400).text("Invalid JSON");
-            return;
-        }
 
         if (!req.body["admin_user"].is<std::string>() || !req.body["admin_pwd"].is<std::string>())
         {
@@ -1057,11 +1032,6 @@ namespace ESP32WebServer
 
     inline void delete_WiFiSavedNetwork(Request const &req, Response &res)
     {
-        if (req.body.isNull())
-        {
-            res.status(400).text("Invalid JSON");
-            return;
-        }
 
         if (req.body.isNull() || !req.body["ssid"].is<std::string>())
         {
@@ -1076,11 +1046,6 @@ namespace ESP32WebServer
 
     inline void post_WiFiSavedNetwork(Request const &req, Response &res)
     {
-        if (req.body.isNull())
-        {
-            res.status(400).text("Invalid JSON");
-            return;
-        }
 
         if (!req.body["ssid"].is<std::string>() || !req.body["password"].is<std::string>())
         {
@@ -1096,35 +1061,65 @@ namespace ESP32WebServer
         res.OK().text("WiFi config updated");
     }
 
+    inline void auth_handler(const Request &req, Response &res)
+    {
+
+        // This is not the most elegant way but works
+        if (
+            req.path == "/admin" ||
+            req.path == "/admin/login" ||
+            req.path == "/admin/logged_in")
+        {
+            return;
+        }
+
+        if (!isTokenValid(req, res))
+        {
+            res.header("Location", "/admin").status(302).text("Unauthorized: No token provided").finalize();
+            return;
+        }
+
+        if (req.method == "GET")
+            return;
+
+        if (req.body.isNull())
+        {
+            res.status(400).text("Invalid JSON").finalize();
+            return;
+        }
+    }
+
     class AdminRouter : public ESP32WebServer::Router
     {
     public:
         AdminRouter()
         {
-            // Perform login and return token
+            use("/admin", auth_handler);
+
+            // Unprotected Routes
+            route("GET", "/admin", get_AdminLogin);
             route("POST", "/admin/login", post_AdminLogin);
             route("GET", "/admin/logged_in", verify_AdminAuth);
 
             // Returns the html sites
-            route("GET", "/admin", get_AdminLogin);
-            route("GET", "/admin/dashboard", {is_Authenticated, get_AdminDashboard});
+            route("GET", "/admin/dashboard", get_AdminDashboard);
 
             // Return 401 if the token is not valid or missing for any /admin/* route
-            route("POST", "/admin/auth", {is_Authenticated, post_AdminUpdateAuth});
+            route("POST", "/admin/auth", post_AdminUpdateAuth);
 
             // Wifi config routes for admin dashboard
-            route("POST", "/admin/restart", {is_Authenticated, post_AdminRestart});
+            route("POST", "/admin/restart", post_AdminRestart);
 
             // Get al WiFi Networks in reach of the device
-            route("GET", "/admin/wifi/scan", {is_Authenticated, get_WiFiScan});
-            route("GET", "/admin/wifi/active", {is_Authenticated, get_WiFiActive});
+            route("GET", "/admin/wifi/scan", get_WiFiScan);
+            route("GET", "/admin/wifi/active", get_WiFiActive);
 
             // Get all WiFi networks to possibly connect to
-            route("GET", "/admin/wifi/networks", {is_Authenticated, get_WiFiSavedNetworks});
+            route("GET", "/admin/wifi/networks", get_WiFiSavedNetworks);
 
             // Add or Remove a WiFi-Config
-            route("POST", "/admin/wifi/network", {is_Authenticated, post_WiFiSavedNetwork});
-            route("DELETE", "/admin/wifi/network", {is_Authenticated, delete_WiFiSavedNetwork});
+            route("POST", "/admin/wifi/network", post_WiFiSavedNetwork);
+            route("DELETE", "/admin/wifi/network", delete_WiFiSavedNetwork);
         }
     };
 }

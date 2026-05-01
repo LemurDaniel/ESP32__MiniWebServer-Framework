@@ -372,7 +372,13 @@ void get_secret(const ESP32WebServer::Request &req, ESP32WebServer::Response &re
 }
 ```
 
-### **Registering Middleware in a Router**
+### **Registering Middleware**
+
+There are two ways to attach middleware:
+
+**Per-route** — pass a handler list directly to `route()`. Only runs for that specific route:
+
+**Global / prefix-based** — register on the server via `use()`. Runs before every matching route, without repeating it in each `route()` call. Useful for logging, CORS headers, or auth that spans multiple endpoints:
 
 ```cpp
 class Router : public ESP32WebServer::Router
@@ -380,6 +386,9 @@ class Router : public ESP32WebServer::Router
 public:
     Router()
     {
+        // Middleware on all paths of /
+        use("/", defaultHandler);
+
         // Public routes — single handler
         route("GET", "/hello", get_hello);
 
@@ -393,21 +402,26 @@ public:
 ### **Execution Flow**
 
 ```
-Request → authMiddleware
+Request → use() handlers (global, then prefix-matched, in registration order)
               │
-              ├─ not authorized → res.finalize() → Response (401) sent
+              ├─ finalize() called → Response sent immediately
               │
-              └─ authorized ────────────────────→ get_secret → Response (200) sent
+              └─ not finalized ──→ per-route middleware chain
+                                        │
+                                        ├─ finalize() called → Response sent
+                                        │
+                                        └─ not finalized ──→ route handler → Response sent
 ```
 
 ### **Common Middleware Patterns**
 
-| Pattern | Description |
-|---------|-------------|
-| Authentication | Check session cookie / token, abort with `401` if missing |
-| Authorization | Verify user role/permissions, abort with `403` |
-| Logging | Log request details, then call next handler without finalizing |
-| Rate Limiting | Track request counts, abort with `429` if threshold exceeded |
+| Pattern | Where | Description |
+|---------|-------|-------------|
+| Logging | `use()` | Log every request without repeating per route |
+| CORS headers | `use()` | Add headers to every response |
+| Auth (global) | `use("/api")` | Protect all `/api/*` routes at once |
+| Auth (per-route) | `route()` chain | Fine-grained control per endpoint |
+| Rate Limiting | `use()` | Track request counts, abort with `429` |
 
 ➡️ See also: **📤 Response Handling** section above for all available response methods.
 

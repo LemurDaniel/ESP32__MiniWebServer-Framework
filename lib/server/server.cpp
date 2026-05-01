@@ -47,24 +47,71 @@ namespace ESP32WebServer
         _is_admin_enabled = false;
     }
 
-    void MiniServer::defaultAdminSalt(std::string salt)
+    void MiniServer::defaultAdminSalt(std::string &salt)
     {
-        setDefaultAdminSalt(salt);
+        TokenManager::instance().DEFAULT_ADMIN_SALT = salt;
     }
 
-    void MiniServer::defaultAdminCredentials(std::string username, std::string password)
+    void MiniServer::defaultAdminCredentials(std::string &username, std::string &password)
     {
-        setDefaultAdminCredentials(username, password);
+        TokenManager::instance().DEFAULT_ADMIN_USER = username;
+        TokenManager::instance().DEFAULT_ADMIN_PWD = password;
     }
 
-    /************************************************
-     ************************************************
-     * Listening for Clients:
-     * - Listen for incoming connections
-     * - Accept the connection and get a new socket for communication
-     * - Handle the client requests (index serving, GET/POST handling, etc.)
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Handle client requests
+     *
      *
      **/
+    void MiniServer::processHandlers(const Request &req, Response &res)
+    {
+        // Search for matching middlewares
+        for (const auto &entry : middlewares)
+        {
+            if (req.path.find(entry.first) != 0)
+            {
+                continue;
+            }
+
+            for (const RequestHandler &handler : entry.second)
+            {
+                handler(req, res);
+
+                Serial.printf("Executed Middleware for route: %s\n", req.path.c_str());
+                Serial.printf("Response status code: %d\n", res.status_code);
+                Serial.printf("Finalized: %s\n", res.finalized ? "true" : "false");
+
+                if (res.finalized)
+                    return;
+            }
+        }
+
+        const std::string routeKey = req.method + " " + req.path;
+
+        auto entry = routes.find(routeKey);
+        if (entry != routes.end())
+        {
+            const std::vector<RequestHandler> &route = entry->second;
+            for (const RequestHandler &handler : route)
+            {
+                handler(req, res);
+
+                Serial.printf("Executed handler for route: %s\n", routeKey.c_str());
+                Serial.printf("Response status code: %d\n", res.status_code);
+                Serial.printf("Finalized: %s\n", res.finalized ? "true" : "false");
+
+                if (res.finalized)
+                    return;
+            }
+        }
+        else
+        {
+            Serial.printf("No handler found for route: %s\n", routeKey.c_str());
+            res.NotFound();
+        }
+    }
+
     void MiniServer::handleClient(int client_socket)
     {
         char buffer[1024];
@@ -80,55 +127,117 @@ namespace ESP32WebServer
         buffer[bytesRead] = '\0'; // Null-terminate the buffer to make it a valid C-string
 
         // Parse the raw HTTP request into a structured Request object
-        Request request = Request::parse(buffer);
+        const Request &request = Request::parse(buffer);
         Response response = Response();
 
-        // Serial.println("\n\n\n--- Raw HTTP Request ---");
-        // Serial.println(buffer);
-        // Serial.println("--------------------------");
+        processHandlers(request, response);
 
-        // Search for a matching route handler
-        const std::string routeKey = request.method + " " + request.path;
-
-        auto entry = routes.find(routeKey);
-        if (entry != routes.end())
+        if (response.responseMode == "file")
         {
-            const std::vector<RequestHandler> &route = entry->second;
-            for (const RequestHandler &handler : route)
-            {
-                handler(request, response);
-
-                Serial.printf("Executed handler for route: %s\n", routeKey.c_str());
-                Serial.printf("Response status code: %d\n", response.status_code);
-                Serial.printf("Finalized: %s\n", response.finalized ? "true" : "false");
-
-                if (response.finalized)
-                {
-                    break;
-                }
-            }
-
-            if (response.responseMode == "file")
-            {
-                serveFile(client_socket, response);
-            }
-            else
-            {
-                std::string header = response.getHeaders();
-                write(client_socket, header.c_str(), header.size());
-                write(client_socket, response.body.c_str(), response.body.size());
-            }
+            serveFile(client_socket, response);
         }
-
         else
         {
-            Serial.printf("No handler found for route: %s\n", routeKey.c_str());
-            response.NotFound();
             std::string header = response.getHeaders();
             write(client_socket, header.c_str(), header.size());
             write(client_socket, response.body.c_str(), response.body.size());
         }
     }
+
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Handle Middleware
+     *
+     **/
+
+    void MiniServer::use(const std::string &prefix, const RequestHandler &handler)
+    {
+        auto entry = middlewares.find(prefix);
+        if (entry != middlewares.end())
+        {
+            std::vector<RequestHandler> &list = entry->second;
+            list.push_back(handler);
+        }
+        else
+        {
+            std::vector<RequestHandler> list{handler};
+            middlewares.insert({prefix, list});
+        }
+    }
+    void MiniServer::use(const RequestHandler &handler)
+    {
+        use("/", handler);
+    }
+
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Implement Routes
+     *
+     **/
+
+    void MiniServer::addRoute(const std::string &method, const std::string &path, const std::vector<RequestHandler> &handlers)
+    {
+        routes.insert({method + " " + path, handlers});
+    }
+    void MiniServer::addRoute(const std::string &method, const std::string &path, const RequestHandler &handler)
+    {
+        const std::vector<RequestHandler> wrapper = {handler};
+        addRoute(method, path, wrapper);
+    }
+
+    void MiniServer::registerRouter(const ESP32WebServer::Router &router)
+    {
+        for (const auto &route : router.routes)
+        {
+            Serial.printf("Registering route: %s %s\n", route.method.c_str(), route.path.c_str());
+            addRoute(route.method, route.path, route.handler);
+        }
+
+        for (const auto &entry : router.middlewares)
+        {
+            Serial.printf("Registering Middelware for Prefix: %s\n", entry.first.c_str());
+            for (const RequestHandler &handler : entry.second)
+            {
+                use(entry.first, handler);
+            }
+        }
+    }
+
+    void MiniServer::route(const std::string &method, const std::string &path, const RequestHandler &handler)
+    {
+        addRoute(method, path, handler);
+    }
+
+    void MiniServer::get(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("GET", path, handler);
+    }
+
+    void MiniServer::post(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("POST", path, handler);
+    }
+
+    void MiniServer::put(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("PUT", path, handler);
+    }
+
+    void MiniServer::patch(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("PATCH", path, handler);
+    }
+
+    void MiniServer::del(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("DELETE", path, handler);
+    }
+
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Serve and handle files:
+     *
+     **/
 
     void MiniServer::serveFile(int client_socket, Response &res)
     {
@@ -161,17 +270,11 @@ namespace ESP32WebServer
         Serial.printf("✅ File transfer completed: %zu bytes sent\n", totalSent);
     }
 
-    /************************************************
-     ************************************************
-     * Serve index or handle GET/POST requests:
-     *
-     **/
-
     void MiniServer::staticFile(const std::string &path, const std::string &file_path)
     {
         Serial.printf("Adding file response: %s -> %s\n", path.c_str(), file_path.c_str());
 
-        auto handler = [file_path](const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+        const RequestHandler &handler = [file_path](const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
         {
             std::string ext;
             auto dot = file_path.find_last_of('.');
@@ -206,56 +309,8 @@ namespace ESP32WebServer
         staticFile("/index.html", index_path);
     }
 
-    void MiniServer::route(const std::string &method, const std::string &path, RequestHandler handler)
-    {
-        addRoute(method, path, handler);
-    }
-
-    void MiniServer::get(const std::string &path, RequestHandler handler)
-    {
-        addRoute("GET", path, handler);
-    }
-
-    void MiniServer::post(const std::string &path, RequestHandler handler)
-    {
-        addRoute("POST", path, handler);
-    }
-
-    void MiniServer::put(const std::string &path, RequestHandler handler)
-    {
-        addRoute("PUT", path, handler);
-    }
-
-    void MiniServer::patch(const std::string &path, RequestHandler handler)
-    {
-        addRoute("PATCH", path, handler);
-    }
-
-    void MiniServer::del(const std::string &path, RequestHandler handler)
-    {
-        addRoute("DELETE", path, handler);
-    }
-
-    void MiniServer::registerRouter(const ESP32WebServer::Router &router)
-    {
-        for (const auto &route : router.routes)
-        {
-            Serial.printf("Registering route: %s %s\n", route.method.c_str(), route.path.c_str());
-            addRoute(route.method, route.path, route.handler);
-        }
-    }
-
-    void MiniServer::addRoute(const std::string &method, const std::string &path, std::vector<RequestHandler> handlers)
-    {
-        routes.insert({method + " " + path, handlers});
-    }
-    void MiniServer::addRoute(const std::string &method, const std::string &path, RequestHandler handler)
-    {
-        addRoute(method, path, std::vector<RequestHandler>{handler});
-    }
-
-    /************************************************
-     ************************************************
+    /*-------------------------------------------------------------------------------------------------
+     *
      * Handle multiple connections and cleanup:
      *
      **/
@@ -278,13 +333,13 @@ namespace ESP32WebServer
                 setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
                 setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
                 // --- TIMEOUT SETUP END ---
-
+                Serial.println("--------------------------------------------------------------------");
                 Serial.printf("Worker handling client on socket %d\n", client_socket);
 
                 server->handleClient(client_socket);
 
                 Serial.printf("Worker finished handling client on socket %d\n", client_socket);
-
+                Serial.println("--------------------------------------------------------------------");
                 shutdown(client_socket, SHUT_RDWR);
                 close(client_socket);
             }
@@ -320,7 +375,7 @@ namespace ESP32WebServer
         }
     }
 
-    int MiniServer::start(int port, std::string ip_addr)
+    int MiniServer::start(int port, const std::string &ip_addr)
     {
 
         if (_is_running)
