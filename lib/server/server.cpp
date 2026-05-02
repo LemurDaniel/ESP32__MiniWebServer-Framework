@@ -87,7 +87,11 @@ namespace ESP32WebServer
             }
         }
 
-        const std::string routeKey = req.method + " " + req.path;
+        std::string routeKey;
+        routeKey.reserve(req.method.size() + 1 + req.path.size());
+        routeKey = req.method;
+        routeKey += ' ';
+        routeKey += req.path;
 
         auto entry = routes.find(routeKey);
         if (entry != routes.end())

@@ -12,6 +12,16 @@ namespace ESP32WebServer
 {
     class Request
     {
+    private:
+        static std::string trim(const std::string &s)
+        {
+            size_t start = s.find_first_not_of(" \t");
+            if (start == std::string::npos)
+                return {};
+            size_t end = s.find_last_not_of(" \t");
+            return s.substr(start, end - start + 1);
+        }
+
     public:
         std::string method;
         std::string path;
@@ -34,13 +44,8 @@ namespace ESP32WebServer
                 size_t eqPos = cookie.find('=');
                 if (eqPos != std::string::npos)
                 {
-                    std::string key = cookie.substr(0, eqPos);
-                    std::string value = cookie.substr(eqPos + 1);
-                    // Trim whitespace
-                    key.erase(0, key.find_first_not_of(" \t"));
-                    key.erase(key.find_last_not_of(" \t") + 1);
-                    value.erase(0, value.find_first_not_of(" \t"));
-                    value.erase(value.find_last_not_of(" \t") + 1);
+                    std::string key = trim(cookie.substr(0, eqPos));
+                    std::string value = trim(cookie.substr(eqPos + 1));
 
                     cookies[key] = value;
                 }
@@ -49,7 +54,7 @@ namespace ESP32WebServer
             return cookies;
         }
 
-        static Request parse(std::string requestRaw)
+        static Request parse(const std::string &requestRaw)
         {
             // fetch first line of request: "GET /path HTTP/1.1"
             std::string requestLine = requestRaw.substr(0, requestRaw.find("\r\n"));
@@ -75,13 +80,8 @@ namespace ESP32WebServer
                 size_t colonPos = headerLine.find(':');
                 if (colonPos != std::string::npos)
                 {
-                    std::string key = headerLine.substr(0, colonPos);
-                    std::string value = headerLine.substr(colonPos + 1);
-                    // Trim whitespace
-                    key.erase(0, key.find_first_not_of(" \t"));
-                    key.erase(key.find_last_not_of(" \t") + 1);
-                    value.erase(0, value.find_first_not_of(" \t"));
-                    value.erase(value.find_last_not_of(" \t") + 1);
+                    std::string key = trim(headerLine.substr(0, colonPos));
+                    std::string value = trim(headerLine.substr(colonPos + 1));
 
                     headers[key] = value;
                 }
