@@ -23,16 +23,43 @@ namespace ESP32WebServer
     class TokenManager
     {
     public:
+        std::string DEFAULT_ADMIN_COOKIE = "adminToken";
+
         std::string DEFAULT_ADMIN_USER = "admin";
         std::string DEFAULT_ADMIN_PWD = "admin";
 
-        // TODO: Add salt 🧂 for password storage
         std::string DEFAULT_ADMIN_SALT = "5B63F3F0104D1649B8E1A9C9E5F2A1"; // Random salt for password hashing
 
         static TokenManager &instance()
         {
             static TokenManager _instance;
             return _instance;
+        }
+
+        bool setCredentials(std::string username, std::string password)
+        {
+
+            JsonDocument doc = JsonDocument();
+
+            if (fileExists(ADMIN_CREDENTIALS_FILE))
+            {
+                std::vector<std::string> creds;
+                doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
+            }
+
+            std::string salt = DEFAULT_ADMIN_SALT;
+            if (doc["admin_salt"].is<std::string>())
+            {
+                salt = doc["admin_salt"].as<std::string>();
+            }
+
+            const std::string password_hash = generateSHA256(password, salt);
+
+            doc["admin_user"] = username;
+            doc["admin_pwd"] = password_hash;
+            writeJsonFile(ADMIN_CREDENTIALS_FILE, doc);
+
+            return true;
         }
 
         std::vector<std::string> getCredentials()
@@ -44,7 +71,7 @@ namespace ESP32WebServer
             if (fileExists(ADMIN_CREDENTIALS_FILE))
             {
                 std::vector<std::string> creds;
-                JsonDocument doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
+                doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
             }
 
             if (doc["admin_salt"].is<std::string>())
@@ -145,7 +172,13 @@ namespace ESP32WebServer
         void addToken(const std::string &token)
         {
             const unsigned long expiry = (millis() / 1000) + 3600;
-            ADMIN_TOKENS.push_back({token, expiry});
+            ADMIN_TOKENS.insert({token, expiry});
+        }
+
+        void removeToken(const std::string &token)
+        {
+            const auto &entry = ADMIN_TOKENS.find(token);
+            ADMIN_TOKENS.erase(entry);
         }
 
         std::string getToken(const std::string &username)
@@ -162,23 +195,19 @@ namespace ESP32WebServer
         {
             unsigned long currentTime = millis() / 1000;
 
-            for (auto token = ADMIN_TOKENS.begin(); token != ADMIN_TOKENS.end();)
+            const auto &entry = ADMIN_TOKENS.find(authToken);
+            if (entry == ADMIN_TOKENS.end())
             {
-                if (currentTime > token->second)
-                {
-                    // Delete expired token
-                    token = ADMIN_TOKENS.erase(token);
-                }
-                else
-                {
-                    if (token->first == authToken)
-                    {
-                        return true;
-                    }
-                    ++token;
-                }
+                return false;
             }
-            return false;
+
+            if (currentTime > entry->second)
+            {
+                // Delete expired token
+                ADMIN_TOKENS.erase(entry);
+            }
+
+            return true;
         }
 
     private:
@@ -188,7 +217,7 @@ namespace ESP32WebServer
         TokenManager(const TokenManager &) = delete;
         void operator=(const TokenManager &) = delete;
 
-        std::vector<std::pair<std::string, unsigned long>> ADMIN_TOKENS;
+        std::map<std::string, unsigned long> ADMIN_TOKENS;
     };
 
     inline void get_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
@@ -288,7 +317,7 @@ namespace ESP32WebServer
                 return false;
             };
 
-            fetch('/admin/logged_in', {
+            fetch('/admin/login', {
                 method: 'GET'
             }).then(res => {
                 if (res.ok) {
@@ -684,7 +713,7 @@ namespace ESP32WebServer
             <div style="display:flex; gap:10px;">
                 <button onclick="confirmRestart()" class="btn btn-success"><i class="fa-solid fa-power-off"></i> Restart
                     Device</button>
-                <a href="/logout" class="btn btn-danger"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+                <a href="/admin" onClick="logOut()" class="btn btn-danger"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
             </div>
         </header>
 
@@ -743,7 +772,7 @@ namespace ESP32WebServer
 
             <div class="card">
                 <h2><i class="fa-solid fa-user-shield"></i> Security</h2>
-                <form action="/admin/update-auth" method="POST">
+                <form id="form-creds" >
                     <div class="form-group">
                         <label class="label">Admin Username</label>
                         <input type="text" name="admin_user" placeholder="Username" required>
@@ -782,6 +811,18 @@ namespace ESP32WebServer
                 <button onclick="closeModal('modal-restart')" class="btn btn-secondary btn-sm">Cancel</button>
                 <button onclick="doRestart()" class="btn btn-danger btn-sm"><i class="fa-solid fa-power-off"></i>
                     Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Saved Confirm -->
+    <div class="modal-overlay" id="modal-admin-saved">
+        <div class="modal">
+            <div class="modal-icon" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Admin Credentials were update!</h3>
+            <p>The old Credentials are no longer valid.</p>
+            <div class="btn-row">
+                <button  onclick="closeModal('modal-admin-saved')" class="btn btn-danger btn-sm">Confirm</button>
             </div>
         </div>
     </div>
@@ -909,7 +950,40 @@ namespace ESP32WebServer
             }
         }
 
-        window.onload = () => { loadWiFiConfig(); loadNetworks(); };
+        async function postAdminCredentials() {
+            const form = document.getElementById('form-creds');
+
+            const res = await fetch('/admin/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    admin_user: form.admin_user.value,
+                    admin_pwd: form.admin_pwd.value
+                })
+            });
+
+            if(!res.ok) {
+                alert(res.statusText);
+                return;
+            } 
+
+            openModal('modal-admin-saved');
+        }
+
+        async function logOut() {
+            await fetch('/admin/logout');
+        }
+
+        window.onload = () => { 
+            loadWiFiConfig(); 
+            loadNetworks(); 
+        
+            // Override form submission to send JSON data
+            document.getElementById("form-creds").onsubmit = function () {
+                postAdminCredentials();
+                return false;
+            };
+        };
     </script>
 </body>
 
@@ -929,15 +1003,15 @@ namespace ESP32WebServer
     {
         Serial.println("Checking authentication for admin route");
 
-        if (req.cookies.find("adminToken") == req.cookies.end())
+        const auto &entry = req.cookies.find(TokenManager::instance().DEFAULT_ADMIN_COOKIE);
+
+        if (entry == req.cookies.end())
         {
             Serial.println("No admin token found in cookies");
             return false;
         }
 
-        const std::string authToken = req.cookies.at("adminToken");
-
-        if (!TokenManager::instance().checkToken(authToken))
+        if (!TokenManager::instance().checkToken(entry->second))
         {
             Serial.println("Invalid or expired admin token");
             return false;
@@ -958,11 +1032,51 @@ namespace ESP32WebServer
         }
     }
 
+    inline void auth_handler(const Request &req, Response &res)
+    {
+
+        // This is not the most elegant way but works
+        if (
+            req.path == "/admin" ||
+            req.path == "/admin/login"
+        )
+        {
+            return;
+        }
+
+        if (!isTokenValid(req, res))
+        {
+            res.header("Location", "/admin").status(302).text("Unauthorized: No token provided").finalize();
+            return;
+        }
+
+        if (req.method == "GET")
+            return;
+
+        if (req.body.isNull())
+        {
+            res.status(400).text("Invalid JSON").finalize();
+            return;
+        }
+    }
+
     /*-------------------------------------------------------------------------------------------------
      *
      * Request Handlers Authentication
      *
      **/
+
+    inline void get_AdminLogout(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
+    {
+        const auto &entry = req.cookies.find(TokenManager::instance().DEFAULT_ADMIN_COOKIE);
+
+        if (entry != req.cookies.end())
+        {
+            TokenManager::instance().removeToken(entry->second);
+        }
+
+        res.OK();
+    }
 
     inline void post_AdminLogin(const ESP32WebServer::Request &req, ESP32WebServer::Response &res)
     {
@@ -989,12 +1103,11 @@ namespace ESP32WebServer
         res.json(doc);
     }
 
-    /**
-     ******************************************************************************
-     ******************************************************************************
-     * Handle Admin Credentials update route for admin panel
+    /*-------------------------------------------------------------------------------------------------
      *
-     */
+     * Handle Admin Credentials
+     *
+     **/
 
     inline void post_AdminUpdateAuth(Request const &req, Response &res)
     {
@@ -1005,13 +1118,17 @@ namespace ESP32WebServer
             return;
         }
 
-        // TODO: Implement admin credential update logic
         std::string newAdminUser = req.body["admin_user"].as<std::string>();
         std::string newAdminPwd = req.body["admin_pwd"].as<std::string>();
 
-        // const std::string hashedPwd = generateSHA256(newAdminPwd);
-
-        res.OK().text("Admin credentials updated");
+        if (TokenManager::instance().setCredentials(newAdminUser, newAdminPwd))
+        {
+            res.OK().text("Admin credentials updated");
+        }
+        else
+        {
+            res.InternalServerError();
+        }
     }
 
     inline void post_AdminRestart(Request const &req, Response &res)
@@ -1021,12 +1138,11 @@ namespace ESP32WebServer
         ESP.restart();
     }
 
-    /**
-     ******************************************************************************
-     ******************************************************************************
-     * Handle WiFi config routes for admin panel
+    /*-------------------------------------------------------------------------------------------------
      *
-     */
+     * Handle WiFi Configuration
+     *
+     **/
     inline void get_WiFiActive(Request const &req, Response &res)
     {
         Serial.println("Fetching current WiFi configuration for admin dashboard");
@@ -1106,34 +1222,6 @@ namespace ESP32WebServer
         res.OK().text("WiFi config updated");
     }
 
-    inline void auth_handler(const Request &req, Response &res)
-    {
-
-        // This is not the most elegant way but works
-        if (
-            req.path == "/admin" ||
-            req.path == "/admin/login" ||
-            req.path == "/admin/logged_in")
-        {
-            return;
-        }
-
-        if (!isTokenValid(req, res))
-        {
-            res.header("Location", "/admin").status(302).text("Unauthorized: No token provided").finalize();
-            return;
-        }
-
-        if (req.method == "GET")
-            return;
-
-        if (req.body.isNull())
-        {
-            res.status(400).text("Invalid JSON").finalize();
-            return;
-        }
-    }
-
     class AdminRouter : public ESP32WebServer::Router
     {
     public:
@@ -1143,8 +1231,9 @@ namespace ESP32WebServer
 
             // Unprotected Routes
             route("GET", "/admin", get_AdminLogin);
+            route("GET", "/admin/logout", get_AdminLogout);
+            route("GET", "/admin/login", verify_AdminAuth);
             route("POST", "/admin/login", post_AdminLogin);
-            route("GET", "/admin/logged_in", verify_AdminAuth);
 
             // Returns the html sites
             route("GET", "/admin/dashboard", get_AdminDashboard);
