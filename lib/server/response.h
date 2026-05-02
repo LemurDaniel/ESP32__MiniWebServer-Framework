@@ -15,6 +15,11 @@ namespace ESP32WebServer
     class Response
     {
     public:
+        static void send(int socket, Response &res)
+        {
+            res.send(socket);
+        }
+
         // Flag to indicate if the response has been finalized by some middleware or handler, preventing further modifications
         int finalized = false;
 
@@ -76,14 +81,12 @@ namespace ESP32WebServer
             return header;
         }
 
-        /**
-         **************************************************
-         **************************************************
+        /*-------------------------------------------------------------------------------------------------
          * Common status codes:
          * 200 - OK
          * 404 - Not Found
          * 500 - Internal Server Error
-         */
+         **/
 
         Response &OK()
         {
@@ -121,12 +124,10 @@ namespace ESP32WebServer
             return *this;
         }
 
-        /**
-         **************************************************
-         **************************************************
+        /*-------------------------------------------------------------------------------------------------
          * Response body helpers for different content types
          *
-         */
+         **/
         Response &file(const std::string &path)
         {
             this->binaryFile(path);
@@ -192,5 +193,33 @@ namespace ESP32WebServer
         }
 
     private:
+        void send(int socket)
+        {
+            std::string header = getHeaders();
+            write(socket, header.c_str(), header.size());
+
+            if (responseMode != "file")
+            {
+                write(socket, body.c_str(), body.size());
+                return;
+            }
+
+            File file = LittleFS.open(filePath.c_str(), "r");
+            char chunk[1460];
+            size_t totalSent = 0;
+            while (file.available() && totalSent < fileSize)
+            {
+                size_t n = file.readBytes(chunk, sizeof(chunk));
+                if (n > 0)
+                {
+                    write(socket, chunk, n);
+                    totalSent += n;
+                }
+                else
+                    break;
+            }
+            file.close();
+            Serial.printf("File transfer completed: %zu bytes sent\n", totalSent);
+        }
     };
 }

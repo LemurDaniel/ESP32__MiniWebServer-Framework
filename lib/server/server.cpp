@@ -64,88 +64,56 @@ namespace ESP32WebServer
      *
      *
      **/
-    void MiniServer::processHandlers(const Request &req, Response &res)
+
+    void MiniServer::handleClient(int client_socket)
     {
+        // Parse the raw HTTP request into a structured Request object
+        const Request &request = Request::parse(client_socket);
+        Response response = Response();
+
         // Search for matching middlewares
         for (const auto &entry : middlewares)
         {
-            if (req.path.find(entry.first) != 0)
+            if (request.path.find(entry.first) != 0)
             {
                 continue;
             }
 
             for (const RequestHandler &handler : entry.second)
             {
-                handler(req, res);
-
-                Serial.printf("Executed Middleware for route: %s\n", req.path.c_str());
-                Serial.printf("Response status code: %d\n", res.status_code);
-                Serial.printf("Finalized: %s\n", res.finalized ? "true" : "false");
-
-                if (res.finalized)
-                    return;
+                handler(request, response);
+                if (response.finalized)
+                {
+                    return Response::send(client_socket, response);
+                }
             }
         }
 
+        // Search for matching route
         std::string routeKey;
-        routeKey.reserve(req.method.size() + 1 + req.path.size());
-        routeKey = req.method;
+        routeKey.reserve(request.method.size() + 1 + request.path.size());
+        routeKey = request.method;
         routeKey += ' ';
-        routeKey += req.path;
+        routeKey += request.path;
 
         auto entry = routes.find(routeKey);
-        if (entry != routes.end())
+        if (entry == routes.end())
         {
-            const std::vector<RequestHandler> &route = entry->second;
-            for (const RequestHandler &handler : route)
-            {
-                handler(req, res);
-
-                Serial.printf("Executed handler for route: %s\n", routeKey.c_str());
-                Serial.printf("Response status code: %d\n", res.status_code);
-                Serial.printf("Finalized: %s\n", res.finalized ? "true" : "false");
-
-                if (res.finalized)
-                    return;
-            }
-        }
-        else
-        {
+            response.NotFound();
+            Response::send(client_socket, response);
             Serial.printf("No handler found for route: %s\n", routeKey.c_str());
-            res.NotFound();
-        }
-    }
-
-    void MiniServer::handleClient(int client_socket)
-    {
-        char buffer[1024];
-
-        int bytesRead = read(client_socket, buffer, sizeof(buffer) - 1);
-
-        if (bytesRead <= 0)
-        {
-            Serial.printf("Failed to read from client socket %d\n", client_socket);
             return;
         }
 
-        buffer[bytesRead] = '\0'; // Null-terminate the buffer to make it a valid C-string
-
-        // Parse the raw HTTP request into a structured Request object
-        const Request &request = Request::parse(buffer);
-        Response response = Response();
-
-        processHandlers(request, response);
-
-        if (response.responseMode == "file")
+        const std::vector<RequestHandler> &route = entry->second;
+        for (const RequestHandler &handler : route)
         {
-            serveFile(client_socket, response);
+            handler(request, response);
+            if (response.finalized)
+                break;
         }
-        else
-        {
-            std::string header = response.getHeaders();
-            write(client_socket, header.c_str(), header.size());
-            write(client_socket, response.body.c_str(), response.body.size());
-        }
+
+        Response::send(client_socket, response);
     }
 
     /*-------------------------------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 
 #include <ArduinoJson-v7.4.3.h>
 #include <string>
+#include <vector>
 #include <map>
 
 namespace ESP32WebServer
@@ -22,102 +23,205 @@ namespace ESP32WebServer
             return s.substr(start, end - start + 1);
         }
 
+        static size_t findBytes(const std::vector<uint8_t> &data, const std::string &pattern, size_t start = 0)
+        {
+            size_t pat_length = pattern.length();
+            if (pat_length == 0 || data.size() < pat_length || start > data.size() - pat_length)
+                return std::string::npos;
+
+            for (size_t i = start; i <= data.size() - pat_length; ++i)
+            {
+                if (memcmp(data.data() + i, pattern.c_str(), pat_length) == 0)
+                    return i;
+            }
+
+            return std::string::npos;
+        }
+
+        static std::string extractString(const std::vector<uint8_t> &data, size_t start, size_t end)
+        {
+            return std::string(reinterpret_cast<const char *>(data.data() + start), end - start);
+        }
+
+        static std::vector<std::string> split(const std::string &text, const std::string &splitter)
+        {
+            std::vector<std::string> elements;
+
+            size_t pos = 0;
+            while (pos < text.size())
+            {
+                size_t end = text.find(splitter, pos);
+                if (end == std::string::npos)
+                    end = text.size();
+
+                elements.push_back(trim(text.substr(pos, end - pos)));
+                pos = end + splitter.size();
+            }
+
+            return elements;
+        }
+
+        std::string extractBodyAsText(size_t maxSize = std::string::npos) const
+        {
+            size_t size = (maxSize == std::string::npos) ? bodyRaw.size() : std::min(maxSize, bodyRaw.size());
+            return std::string(reinterpret_cast<const char *>(bodyRaw.data()), size);
+        }
+
+        std::string readBodyAsText(int clientSocket, size_t maxSize)
+        {
+            char chunk[256];
+            while (bodyRaw.size() < maxSize)
+            {
+                size_t toRead = std::min((size_t)sizeof(chunk), maxSize - bodyRaw.size());
+                int n = read(clientSocket, chunk, toRead);
+                if (n <= 0)
+                    break;
+                bodyRaw.insert(bodyRaw.end(), chunk, chunk + n);
+            }
+            return extractBodyAsText(maxSize);
+        }
+
+        std::vector<std::string> extractHeader(int clientSocket)
+        {
+            std::vector<std::string> headerRaw;
+
+            char chunk[256];
+
+            std::string header;
+            header.reserve(512);
+
+            size_t headerEnd = std::string::npos;
+
+            // ---------------------------------------------------------------------
+            // Phase 1: read until \r\n\r\n (complete headers)
+            do
+            {
+                int n = read(clientSocket, chunk, sizeof(chunk));
+                if (n <= 0)
+                {
+                    Serial.println("Failed to read from socket");
+                    return {};
+                }
+                header.append(chunk, n);
+                headerEnd = header.find("\r\n\r\n");
+            } while (headerEnd == std::string::npos && header.size() < 8192);
+
+            if (headerEnd == std::string::npos)
+                return headerRaw;
+
+            // ---------------------------------------------------------------------
+            // Phase 2: bytes in headers string are the start of the body;
+            std::vector<uint8_t> body(header.begin() + headerEnd + 4, header.end());
+            bodyRaw = body;
+
+            // ---------------------------------------------------------------------
+            // Phase 3: split headers into list of lines
+
+            header.resize(headerEnd);
+            size_t startOfLine = 0;
+            while (startOfLine < header.size())
+            {
+                size_t endOfLine = header.find("\r\n", startOfLine);
+                if (endOfLine == std::string::npos)
+                {
+                    endOfLine = header.size();
+                }
+
+                const std::string line = header.substr(startOfLine, endOfLine - startOfLine);
+                headerRaw.push_back(line);
+                startOfLine = endOfLine + 2;
+            }
+
+            return headerRaw;
+        }
+
     public:
         std::string method;
         std::string path;
         std::map<std::string, std::string> headers;
         std::map<std::string, std::string> cookies;
-        std::string bodyRaw; // Raw body as string
-        JsonDocument body;   // Parsed JSON body (if applicable)
 
-        static std::map<std::string, std::string> parseCookies(const std::string &cookieHeader)
+        std::vector<uint8_t> bodyRaw; // Raw body as bytes (binary-safe)
+
+        JsonDocument body; // Parsed JSON body (if Content-Type: application/json)
+
+        static Request parse(int client_socket)
         {
-            std::map<std::string, std::string> cookies;
-            size_t start = 0;
-            while (start < cookieHeader.length())
-            {
-                size_t end = cookieHeader.find(';', start);
-                if (end == std::string::npos)
-                    end = cookieHeader.length();
-
-                std::string cookie = cookieHeader.substr(start, end - start);
-                size_t eqPos = cookie.find('=');
-                if (eqPos != std::string::npos)
-                {
-                    std::string key = trim(cookie.substr(0, eqPos));
-                    std::string value = trim(cookie.substr(eqPos + 1));
-
-                    cookies[key] = value;
-                }
-                start = end + 1;
-            }
-            return cookies;
-        }
-
-        static Request parse(const std::string &requestRaw)
-        {
-            // fetch first line of request: "GET /path HTTP/1.1"
-            std::string requestLine = requestRaw.substr(0, requestRaw.find("\r\n"));
-
-            // split request line into method and path
-            size_t firstSpace = requestLine.find(' ');
-            size_t secondSpace = requestLine.find(' ', firstSpace + 1);
-
-            std::string method = requestLine.substr(0, firstSpace);
-            std::string path = requestLine.substr(firstSpace + 1, secondSpace - firstSpace - 1);
-
-            // --- Extract headers ---
-            std::map<std::string, std::string> cookies = {};
-            std::map<std::string, std::string> headers = {};
-            size_t pos = requestRaw.find("\r\n") + 2; // Start after the request line
-            while (true)
-            {
-                size_t endOfLine = requestRaw.find("\r\n", pos);
-                if (endOfLine == std::string::npos || endOfLine == pos)
-                    break; // End of headers
-
-                std::string headerLine = requestRaw.substr(pos, endOfLine - pos);
-                size_t colonPos = headerLine.find(':');
-                if (colonPos != std::string::npos)
-                {
-                    std::string key = trim(headerLine.substr(0, colonPos));
-                    std::string value = trim(headerLine.substr(colonPos + 1));
-
-                    headers[key] = value;
-                }
-                pos = endOfLine + 2;
-            }
-
-            // --- Process Request Headers and Body ---
             Request request;
-            request.method = method;
-            request.path = path;
-            request.bodyRaw = "";
-            request.headers = headers;
-            request.cookies = cookies;
 
-            if (headers.find("Cookie") != headers.end())
+            // --- Extract header ---
+            Serial.println("Extracing Raw Header");
+            std::vector<std::string> headerRaw = request.extractHeader(client_socket);
+            if (headerRaw.empty())
+                return request;
+
+            // Split: "GET /path HTTP/1.1"
+            std::vector<std::string> firstLine = Request::split(headerRaw[0], " ");
+            request.method = firstLine[0];
+            request.path = firstLine[1];
+
+            Serial.println("Extracing Headers");
+            for (size_t i = 1; i < headerRaw.size(); i++)
             {
-                request.cookies = parseCookies(headers["Cookie"]);
+                std::vector<std::string> line = Request::split(headerRaw[i], ":");
+                if (line.size() >= 2)
+                    request.headers[line[0]] = line[1];
             }
 
-            // Body extrahieren (falls vorhanden)
-            size_t headerEnd = requestRaw.find("\r\n\r\n");
-            if (headerEnd != std::string::npos)
+            Serial.println("Extracing Cookies");
+            if (request.headers.find("Cookie") != request.headers.end())
             {
-                request.bodyRaw = requestRaw.substr(headerEnd + 4);
-                if (
-                    request.headers.find("Content-Type") != request.headers.end() &&
-                    request.headers["Content-Type"] == "application/json")
+                std::vector<std::string> cookieHeader = Request::split(request.headers["Cookie"], ";");
+                for (size_t i = 0; i < cookieHeader.size(); i++)
                 {
-                    request.bodyRaw = requestRaw.substr(headerEnd + 4);
-                    deserializeJson(request.body, request.bodyRaw);
+                    std::vector<std::string> line = Request::split(cookieHeader[i], "=");
+                    if (line.size() >= 2)
+                        request.cookies[line[0]] = line[1];
                 }
+            }
+
+            // --- Extract body ---
+             Serial.println("Extracing Body");
+            if (request.headers.find("Content-Type") == request.headers.end())
+            {
+                return request;
+            }
+
+            Serial.println("Extracing Body - Content Length");
+            size_t contentLength = 0;
+
+
+            Serial.println(request.headers["Content-Length"].c_str());
+            Serial.println(request.headers["Content-Type"].c_str());
+
+            auto clIt = request.headers.find("Content-Length");
+            if (clIt != request.headers.end())
+            {
+                for (char c : clIt->second)
+                {
+                    if (c < '0' || c > '9') break;
+                    contentLength = contentLength * 10 + (c - '0');
+                }
+            }
+
+            if (contentLength == 0)
+            {
+                Serial.println("Extracing Body - Content Length is 0");
+                return request;
+            }
+
+            if (request.headers["Content-Type"].find("application/json") != std::string::npos)
+            {
+                Serial.println("Extracing Body - Content Json");
+                request.readBodyAsText(client_socket, contentLength);
+                deserializeJson(request.body, request.bodyRaw);
+            }
+            else
+            {
+                request.readBodyAsText(client_socket, contentLength);
             }
 
             return request;
         }
-
-    private:
     };
 }
