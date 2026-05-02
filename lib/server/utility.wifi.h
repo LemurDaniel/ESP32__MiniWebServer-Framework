@@ -64,6 +64,12 @@ namespace ESP32WebServer
             removeFile(WIFI_CONFIG_FILE);
         }
 
+        /*-------------------------------------------------------------------------------------------------
+         *
+         * Handle Saved / Nearby Networks
+         *
+         **/
+
         std::vector<WiFiConfig> scanNetworks()
         {
             std::vector<WiFiConfig> ssids;
@@ -132,7 +138,7 @@ namespace ESP32WebServer
             activeWiFi.ssid = WiFi.SSID().c_str();
             activeWiFi.signalStrength = WiFi.RSSI();
             activeWiFi.ipAddress = WiFi.localIP().toString().c_str();
-            
+
             std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
             for (const WiFiConfig &config : savedNetworks)
             {
@@ -146,22 +152,27 @@ namespace ESP32WebServer
 
         std::vector<WiFiConfig> getNearestNetworks()
         {
-            std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
-            std::vector<WiFiConfig> scannedNetworks = scanNetworks();
+            const std::vector<WiFiConfig> &scannedNetworks = scanNetworks();
+            std::map<std::string, WiFiConfig> savedNetworks;
             std::vector<WiFiConfig> nearbyNetworks;
 
-            for (const WiFiConfig &saved : savedNetworks)
+            for (const WiFiConfig &saved : getSavedNetworks())
             {
-                for (const WiFiConfig &scanned : scannedNetworks)
-                {
-                    if (saved.ssid != scanned.ssid)
-                        continue;
+                savedNetworks.insert({saved.ssid, saved});
+            }
 
-                    WiFiConfig match = saved;
-                    match.signalStrength = scanned.signalStrength;
-                    nearbyNetworks.push_back(match);
-                    break;
+            for (const WiFiConfig &scanned : scannedNetworks)
+            {
+                const auto &entry = savedNetworks.find(scanned.ssid);
+                if (entry == savedNetworks.end())
+                {
+                    continue;
                 }
+
+                WiFiConfig match = entry->second;
+                match.signalStrength = scanned.signalStrength;
+                nearbyNetworks.push_back(match);
+                break;
             }
 
             std::sort(nearbyNetworks.begin(), nearbyNetworks.end(), [](const WiFiConfig &a, const WiFiConfig &b)
@@ -170,20 +181,20 @@ namespace ESP32WebServer
             return nearbyNetworks;
         }
 
-        /*
-        *******************************************************************
-        *******************************************************************
-        *** Task to setup WiFi
+        /*-------------------------------------------------------------------------------------------------
 
-        Continually checks every 30 seconds if the device is connected to a WiFi.
-        If it is NOT, then attempts its connection routine:
+            Setup Wifi
 
-        -> Find the nearest Saved network and connect to it
-        -> On Failure try the next network
 
-        -> Fallback to AP-Mode if
-            -> No Connection could be made
-            -> No saved network is nearby
+            Continually checks every 30 seconds if the device is connected to a WiFi.
+            If it is NOT, then attempts its connection routine:
+
+            -> Find the nearest Saved network and connect to it
+            -> On Failure try the next network
+
+            -> Fallback to AP-Mode if
+                -> No Connection could be made
+                -> No saved network is nearby
 
 
         */
@@ -214,7 +225,8 @@ namespace ESP32WebServer
 
         void setup()
         {
-            if(isNetworkReady()) {
+            if (isNetworkReady())
+            {
                 return;
             }
 
