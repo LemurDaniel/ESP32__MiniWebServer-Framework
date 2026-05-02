@@ -8,7 +8,7 @@
 
 #include <Arduino.h>
 #include <stdlib.h>
-#include <mbedtls/md.h>
+#include "mbedtls/sha256.h"
 
 #include <vector>
 #include <string>
@@ -35,10 +35,127 @@ namespace ESP32WebServer
             return _instance;
         }
 
+        std::vector<std::string> getCredentials()
+        {
+
+            std::vector<std::string> creds;
+            JsonDocument doc = JsonDocument();
+
+            if (fileExists(ADMIN_CREDENTIALS_FILE))
+            {
+                std::vector<std::string> creds;
+                JsonDocument doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
+            }
+
+            if (doc["admin_salt"].is<std::string>())
+            {
+                creds.push_back(doc["admin_salt"].as<std::string>());
+            }
+            else
+            {
+                creds.push_back(DEFAULT_ADMIN_SALT);
+            }
+
+            if (doc["admin_user"].is<std::string>())
+            {
+                creds.push_back(doc["admin_user"].as<std::string>());
+            }
+            else
+            {
+                creds.push_back(DEFAULT_ADMIN_USER);
+            }
+
+            if (doc["admin_pwd"].is<std::string>())
+            {
+                creds.push_back(doc["admin_pwd"].as<std::string>());
+            }
+            else
+            {
+                std::string admin_hash = generateSHA256(DEFAULT_ADMIN_PWD, creds[0]);
+                creds.push_back(admin_hash);
+            }
+
+            return creds;
+        }
+
+        /*-------------------------------------------------------------------------------------------------
+         *
+         * Handle credentials
+         *
+         **/
+
+        bool checkCredentials(const std::string &username, const std::string &password)
+        {
+            const std::vector<std::string> creds = getCredentials();
+
+            std::string admin_salt = creds[0];
+            std::string admin_user = creds[1];
+            std::string admin_pwd = creds[2];
+
+            const std::string hash = generateSHA256(password, admin_salt);
+
+            return username == admin_user && hash == admin_pwd;
+        }
+
+        std::string randomString()
+        {
+            std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            std::string result;
+            for (int i = 0; i < 16; i++)
+            {
+                int index = random(0, charSet.size());
+                result += charSet[index];
+            }
+            return result;
+        }
+
+        std::string generateSHA256(const std::string &text, const std::string salt)
+        {
+            mbedtls_sha256_context ctx;
+            mbedtls_sha256_init(&ctx);
+            mbedtls_sha256_starts(&ctx, 0); // 0 = SHA-256
+
+            // Combine password and salt
+            mbedtls_sha256_update(&ctx, (unsigned char *)text.c_str(), text.length());
+            mbedtls_sha256_update(&ctx, (unsigned char *)salt.c_str(), 16); // Assuming 16-byte salt
+
+            unsigned char shaResult[32];
+
+            mbedtls_sha256_finish(&ctx, shaResult);
+            mbedtls_sha256_free(&ctx);
+
+            std::string hashStr;
+
+            for (int i = 0; i < 32; i++)
+            {
+                char buf[3];
+                snprintf(buf, sizeof(buf), "%02x", shaResult[i]);
+                hashStr += buf;
+            }
+
+            return hashStr;
+        }
+
+        /*-------------------------------------------------------------------------------------------------
+         *
+         * Handle tokens
+         *
+         **/
+
         void addToken(const std::string &token)
         {
             const unsigned long expiry = (millis() / 1000) + 3600;
             ADMIN_TOKENS.push_back({token, expiry});
+        }
+
+        std::string getToken(const std::string &username)
+        {
+            const std::string token = generateSHA256(randomString() + String(millis()).c_str(), username);
+            const unsigned long tokenExpiresAt = millis() + 3600000; // Token valid for 1 hour
+
+            addToken(token);
+
+            return token;
         }
 
         bool checkToken(const std::string &authToken)
@@ -801,49 +918,6 @@ namespace ESP32WebServer
 
         res.html(dashboardPage);
     }
-    /**
-    ******************************************************************************
-    ******************************************************************************
-    * Handle Login logic for admin panel
-    *
-    */
-
-    inline std::string randomString()
-    {
-        std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        std::string result;
-        for (int i = 0; i < 16; i++)
-        {
-            int index = random(0, charSet.size());
-            result += charSet[index];
-        }
-        return result;
-    }
-
-    inline std::string generateSHA256(const std::string &text)
-    {
-        std::vector<uint8_t> hash(32);
-
-        mbedtls_md_context_t ctx;
-        mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-
-        mbedtls_md_init(&ctx);
-        mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
-        mbedtls_md_starts(&ctx);
-        mbedtls_md_update(&ctx, (const unsigned char *)text.c_str(), text.length());
-        mbedtls_md_finish(&ctx, hash.data());
-        mbedtls_md_free(&ctx);
-
-        std::string hashStr;
-        for (uint8_t byte : hash)
-        {
-            char buf[3];
-            snprintf(buf, sizeof(buf), "%02x", byte);
-            hashStr += buf;
-        }
-
-        return hashStr;
-    }
 
     /*-------------------------------------------------------------------------------------------------
      *
@@ -900,46 +974,17 @@ namespace ESP32WebServer
             return;
         }
 
-        std::string admin_user = "admin";
-        std::string admin_pwd = generateSHA256("admin");
-
         std::string username = req.body["username"].as<std::string>();
-        std::string password = generateSHA256(req.body["password"].as<std::string>());
+        std::string password = req.body["password"].as<std::string>();
 
-        // Read stored credentials from file
-        if (fileExists(ADMIN_CREDENTIALS_FILE))
+        if (!TokenManager::instance().checkCredentials(username, password))
         {
-            Serial.println("Reading admin credentials from file");
-            const JsonDocument doc = readJsonFile(ADMIN_CREDENTIALS_FILE);
-            if (doc["admin_user"].is<std::string>() && doc["admin_pwd"].is<std::string>())
-            {
-                admin_user = doc["admin_user"].as<std::string>();
-                admin_pwd = doc["admin_pwd"].as<std::string>();
-            }
-        }
-        else
-        {
-            Serial.println("Admin credentials file not found, using default credentials");
-        }
-
-        Serial.printf("Login attempt with username: %s\n", username.c_str());
-        Serial.printf("Expected username: %s\n", admin_user.c_str());
-        Serial.printf("Received password hash: %s\n", password.c_str());
-        Serial.printf("Expected password hash: %s\n", admin_pwd.c_str());
-        if (username != admin_user || password != admin_pwd)
-        {
-            Serial.println("Invalid username or password");
             res.status(401).text("Invalid username or password");
             return;
         }
 
-        const std::string token = generateSHA256(username + randomString() + String(millis()).c_str());
-        const unsigned long tokenExpiresAt = millis() + 3600000; // Token valid for 1 hour
-
-        TokenManager::instance().addToken(token);
-
         JsonDocument doc;
-        doc["token"] = token;
+        doc["token"] = TokenManager::instance().getToken(username);
 
         res.json(doc);
     }
@@ -964,7 +1009,7 @@ namespace ESP32WebServer
         std::string newAdminUser = req.body["admin_user"].as<std::string>();
         std::string newAdminPwd = req.body["admin_pwd"].as<std::string>();
 
-        const std::string hashedPwd = generateSHA256(newAdminPwd);
+        // const std::string hashedPwd = generateSHA256(newAdminPwd);
 
         res.OK().text("Admin credentials updated");
     }
