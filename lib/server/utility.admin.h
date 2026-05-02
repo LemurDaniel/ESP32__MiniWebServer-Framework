@@ -300,7 +300,7 @@ namespace ESP32WebServer
 <body>
 
     <div class="login-container">
-        <h2>Admin Bereich</h2>
+        <h2>Admin Only</h2>
         <form id="form-login">
             <div class="form-group">
                 <label for="username">Benutzername</label>
@@ -1138,7 +1138,7 @@ namespace ESP32WebServer
     inline void post_AdminRestart(Request &req, Response &res)
     {
         res.OK().text("Restarting...");
-        xTaskCreate(restartTask, "restart", 1024, nullptr, 1, nullptr);
+        xTaskCreate(restartTask, "restart", 4096, nullptr, 1, nullptr);
     }
 
     /*-------------------------------------------------------------------------------------------------

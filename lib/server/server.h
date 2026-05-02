@@ -26,6 +26,7 @@
 #include <utility.file.h>
 #include <utility.wifi.h>
 #include <utility.admin.h>
+#include <utility.update.h>
 #include <router.h>
 
 namespace ESP32WebServer

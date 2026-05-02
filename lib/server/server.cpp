@@ -373,6 +373,8 @@ namespace ESP32WebServer
             this->registerRouter(ESP32WebServer::AdminRouter());
         }
 
+        this->registerRouter(ESP32WebServer::UpdateRouter());
+
         if (!WiFiUtility::instance().isNetworkReady())
         {
             WiFiUtility::instance().setup();
