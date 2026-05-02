@@ -11,31 +11,16 @@
 #include <vector>
 #include <map>
 
+#include <utility.file.h>
+
 namespace ESP32WebServer
 {
-    const std::string TEMP_FOLDER = "/tmp";
+
     const size_t BODY_SIZE_TRESHOLD = 8192;
 
     class Request
     {
     public:
-        static void clearTempFolder()
-        {
-            File dir = LittleFS.open(TEMP_FOLDER.c_str());
-            if (!dir || !dir.isDirectory())
-            {
-                LittleFS.mkdir(TEMP_FOLDER.c_str());
-                return;
-            }
-            File entry = dir.openNextFile();
-            while (entry)
-            {
-                LittleFS.remove(entry.path());
-                entry = dir.openNextFile();
-            }
-            dir.close();
-        }
-
     private:
         /*-------------------------------------------------------------------------------------------------
          *
@@ -133,7 +118,7 @@ namespace ESP32WebServer
 
         void readBodyToFile(int clientSocket, size_t contentLength)
         {
-            filePath = TEMP_FOLDER + "/" + std::to_string(clientSocket) + std::to_string(millis());
+            filePath = getTempFolder() + std::to_string(clientSocket) + std::to_string(millis());
             File tmpFile = LittleFS.open(filePath.c_str(), "w", true);
             if (!tmpFile)
             {

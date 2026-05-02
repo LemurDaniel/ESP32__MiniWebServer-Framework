@@ -365,7 +365,7 @@ namespace ESP32WebServer
             return 0;
         }
 
-        Request::clearTempFolder();
+        clearFolder(TEMP_FOLDER);
 
         if (_is_admin_enabled)
         {

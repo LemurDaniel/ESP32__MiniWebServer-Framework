@@ -14,9 +14,11 @@
 namespace ESP32WebServer
 {
 
-    inline bool fileExists(const std::string &file_path)
+    const std::string TEMP_FOLDER = "/tmp";
+
+    inline bool fileExists(const std::string &filePath)
     {
-        return LittleFS.exists(file_path.c_str());
+        return LittleFS.exists(filePath.c_str());
     }
 
     struct FileInfo
@@ -27,9 +29,20 @@ namespace ESP32WebServer
         std::string baseName;
     };
 
-    inline std::vector<FileInfo> listFiles(const std::string &folder_path, std::vector<FileInfo> &files, const std::string &prefix = "")
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Folder and Folder Contents
+     *
+     **/
+
+    inline std::string getTempFolder()
     {
-        File folder = LittleFS.open(folder_path.c_str());
+        return TEMP_FOLDER + std::to_string(millis());
+    }
+
+    inline std::vector<FileInfo> listFiles(const std::string &folderPath, std::vector<FileInfo> &files, const std::string &prefix = "")
+    {
+        File folder = LittleFS.open(folderPath.c_str());
         if (!folder || !folder.isDirectory())
         {
             throw std::runtime_error("Path is not a directory");
@@ -64,46 +77,75 @@ namespace ESP32WebServer
         return files;
     }
 
-    inline std::vector<FileInfo> listFiles(const std::string &folder_path)
+    inline std::vector<FileInfo> listFiles(const std::string &folderPath)
     {
         std::vector<FileInfo> files;
-        return listFiles(folder_path, files);
+        return listFiles(folderPath, files);
     }
 
-    inline int removeFile(const std::string &file_path)
+    static void clearFolder(const std::string &folderPath)
     {
-        if (fileExists(file_path))
+        File dir = LittleFS.open(folderPath.c_str());
+        if (!dir || !dir.isDirectory())
         {
-            if (LittleFS.remove(file_path.c_str()))
+            LittleFS.mkdir(folderPath.c_str());
+            return;
+        }
+        File entry = dir.openNextFile();
+        while (entry)
+        {
+            LittleFS.remove(entry.path());
+            entry = dir.openNextFile();
+        }
+        dir.close();
+    }
+
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Handle Files
+     *
+     **/
+
+    inline int removeFile(const std::string &filePath)
+    {
+        if (fileExists(filePath))
+        {
+            if (LittleFS.remove(filePath.c_str()))
             {
-                Serial.printf("✅ Successfully removed file %s\n", file_path.c_str());
+                Serial.printf("✅ Successfully removed file %s\n", filePath.c_str());
                 return 0;
             }
             else
             {
-                Serial.printf("❌ CRITICAL: Failed to remove file %s!\n", file_path.c_str());
+                Serial.printf("❌ CRITICAL: Failed to remove file %s!\n", filePath.c_str());
                 return -1;
             }
         }
         else
         {
-            Serial.printf("ℹ️ No file found at %s to remove.\n", file_path.c_str());
+            Serial.printf("ℹ️ No file found at %s to remove.\n", filePath.c_str());
             return -1;
         }
     }
 
-    inline JsonDocument readJsonFile(const std::string &file_path)
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Read and write JSON
+     *
+     **/
+
+    inline JsonDocument readJsonFile(const std::string &filePath)
     {
-        if (!fileExists(file_path))
+        if (!fileExists(filePath))
         {
-            Serial.printf("❌ CRITICAL: JSON file %s not found!\n", file_path.c_str());
+            Serial.printf("❌ CRITICAL: JSON file %s not found!\n", filePath.c_str());
             return JsonDocument();
         }
 
-        File file = LittleFS.open(file_path.c_str(), "r");
+        File file = LittleFS.open(filePath.c_str(), "r");
         if (!file)
         {
-            Serial.printf("❌ CRITICAL: Failed to open JSON file %s for reading!\n", file_path.c_str());
+            Serial.printf("❌ CRITICAL: Failed to open JSON file %s for reading!\n", filePath.c_str());
             return JsonDocument();
         }
 
@@ -116,16 +158,16 @@ namespace ESP32WebServer
         DeserializationError error = deserializeJson(doc, jsonStr);
         if (error)
         {
-            Serial.printf("❌ CRITICAL: Failed to parse JSON file %s! Error: %s\n", file_path.c_str(), error.c_str());
+            Serial.printf("❌ CRITICAL: Failed to parse JSON file %s! Error: %s\n", filePath.c_str(), error.c_str());
             return JsonDocument();
         }
 
         return doc;
     }
 
-    inline bool writeJsonFile(const std::string &file_path, const JsonDocument &doc)
+    inline bool writeJsonFile(const std::string &filePath, const JsonDocument &doc)
     {
-        File file = LittleFS.open(file_path.c_str(), "w");
+        File file = LittleFS.open(filePath.c_str(), "w");
         if (!file)
         {
             throw "CRITICAL: Failed to open File to write";
@@ -137,7 +179,7 @@ namespace ESP32WebServer
         file.print(jsonStr.c_str());
         file.close();
 
-        Serial.printf("✅ Successfully wrote JSON file %s\n", file_path.c_str());
+        Serial.printf("✅ Successfully wrote JSON file %s\n", filePath.c_str());
 
         return true;
     }
