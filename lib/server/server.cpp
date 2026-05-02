@@ -19,8 +19,8 @@ namespace ESP32WebServer
      **/
     MiniServer::MiniServer()
     {
-        _is_running = false;
         LittleFS.begin(true);
+        _is_running = false;
     }
     MiniServer::~MiniServer()
     {
@@ -67,9 +67,18 @@ namespace ESP32WebServer
 
     void MiniServer::handleClient(int client_socket)
     {
+        Response response = Response();
+
         // Parse the raw HTTP request into a structured Request object
         const Request &request = Request::parse(client_socket);
-        Response response = Response();
+        if (request.rejected)
+        {
+            response.status(413).text(request.error);
+            Response::send(client_socket, response);
+            struct linger sl = {1, 0};
+            setsockopt(client_socket, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl));
+            return;
+        }
 
         // Search for matching middlewares
         for (const auto &entry : middlewares)
@@ -355,6 +364,8 @@ namespace ESP32WebServer
             Serial.println("Server is already running");
             return 0;
         }
+
+        Request::clearTempFolder();
 
         if (_is_admin_enabled)
         {

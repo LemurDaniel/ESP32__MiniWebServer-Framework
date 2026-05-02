@@ -5,15 +5,44 @@
 #pragma once
 
 #include <ArduinoJson-v7.4.3.h>
+#include <LittleFS.h>
+
 #include <string>
 #include <vector>
 #include <map>
 
 namespace ESP32WebServer
 {
+    const std::string TEMP_FOLDER = "/tmp";
+    const size_t BODY_SIZE_TRESHOLD = 8192;
+
     class Request
     {
+    public:
+        static void clearTempFolder()
+        {
+            File dir = LittleFS.open(TEMP_FOLDER.c_str());
+            if (!dir || !dir.isDirectory())
+            {
+                LittleFS.mkdir(TEMP_FOLDER.c_str());
+                return;
+            }
+            File entry = dir.openNextFile();
+            while (entry)
+            {
+                LittleFS.remove(entry.path());
+                entry = dir.openNextFile();
+            }
+            dir.close();
+        }
+
     private:
+        /*-------------------------------------------------------------------------------------------------
+         *
+         * static helper Methods
+         *
+         *
+         **/
         static std::string trim(const std::string &s)
         {
             size_t start = s.find_first_not_of(" \t");
@@ -61,6 +90,27 @@ namespace ESP32WebServer
             return elements;
         }
 
+        /*-------------------------------------------------------------------------------------------------
+         *
+         * Extract body content
+         *
+         *
+         **/
+        void drainSocket(int clientSocket, size_t contentLength)
+        {
+            char drain[256];
+            size_t drained = bodyRaw.size();
+            bodyRaw.clear();
+            while (drained < contentLength)
+            {
+                size_t toRead = std::min((size_t)sizeof(drain), contentLength - drained);
+                int n = read(clientSocket, drain, toRead);
+                if (n <= 0)
+                    break;
+                drained += n;
+            }
+        }
+
         std::string extractBodyAsText(size_t maxSize = std::string::npos) const
         {
             size_t size = (maxSize == std::string::npos) ? bodyRaw.size() : std::min(maxSize, bodyRaw.size());
@@ -81,6 +131,43 @@ namespace ESP32WebServer
             return extractBodyAsText(maxSize);
         }
 
+        void readBodyToFile(int clientSocket, size_t contentLength)
+        {
+            filePath = TEMP_FOLDER + "/" + std::to_string(clientSocket) + std::to_string(millis());
+            File tmpFile = LittleFS.open(filePath.c_str(), "w", true);
+            if (!tmpFile)
+            {
+                Serial.println("Failed to open temp file for body");
+                filePath = "";
+                return;
+            }
+
+            // write bytes already buffered from header read
+            size_t written = bodyRaw.size();
+            if (written > 0)
+                tmpFile.write(bodyRaw.data(), written);
+            bodyRaw.clear();
+
+            char chunk[256];
+            while (written < contentLength)
+            {
+                size_t toRead = std::min((size_t)sizeof(chunk), contentLength - written);
+                int n = read(clientSocket, chunk, toRead);
+                if (n <= 0)
+                    break;
+                tmpFile.write((uint8_t *)chunk, n);
+                written += n;
+            }
+            tmpFile.close();
+            Serial.printf("Body written to temp file: %s (%zu bytes)\n", filePath.c_str(), written);
+        }
+
+        /*-------------------------------------------------------------------------------------------------
+         *
+         * Extract Header
+         *
+         *
+         **/
         std::vector<std::string> extractHeader(int clientSocket)
         {
             std::vector<std::string> headerRaw;
@@ -136,14 +223,36 @@ namespace ESP32WebServer
         }
 
     public:
+        Request() = default;
+
+        Request(Request &&other) = default;
+        Request &operator=(Request &&other) = default;
+
+        Request(const Request &) = delete;
+        Request &operator=(const Request &) = delete;
+
+        // Delete temp file on destruktor
+        ~Request()
+        {
+            if (!filePath.empty())
+            {
+                LittleFS.remove(filePath.c_str());
+                Serial.print("Removed file: ");
+                Serial.println(filePath.c_str());
+            }
+        }
+
+        int rejected = false;
+        std::string error;
+
         std::string method;
         std::string path;
         std::map<std::string, std::string> headers;
         std::map<std::string, std::string> cookies;
 
-        std::vector<uint8_t> bodyRaw; // Raw body as bytes (binary-safe)
-
-        JsonDocument body; // Parsed JSON body (if Content-Type: application/json)
+        std::vector<uint8_t> bodyRaw; // Raw body as bytes (binary-safe), empty if body is in file
+        std::string filePath;         // set if body was too large for RAM and written to LittleFS
+        JsonDocument body;            // Parsed JSON body (if Content-Type: application/json)
 
         static Request parse(int client_socket)
         {
@@ -160,7 +269,6 @@ namespace ESP32WebServer
             request.method = firstLine[0];
             request.path = firstLine[1];
 
-            Serial.println("Extracing Headers");
             for (size_t i = 1; i < headerRaw.size(); i++)
             {
                 std::vector<std::string> line = Request::split(headerRaw[i], ":");
@@ -168,7 +276,6 @@ namespace ESP32WebServer
                     request.headers[line[0]] = line[1];
             }
 
-            Serial.println("Extracing Cookies");
             if (request.headers.find("Cookie") != request.headers.end())
             {
                 std::vector<std::string> cookieHeader = Request::split(request.headers["Cookie"], ";");
@@ -181,40 +288,49 @@ namespace ESP32WebServer
             }
 
             // --- Extract body ---
-             Serial.println("Extracing Body");
-            if (request.headers.find("Content-Type") == request.headers.end())
-            {
-                return request;
-            }
-
-            Serial.println("Extracing Body - Content Length");
             size_t contentLength = 0;
+            std::string contentType = "application/text";
 
-
-            Serial.println(request.headers["Content-Length"].c_str());
-            Serial.println(request.headers["Content-Type"].c_str());
+            if (request.headers.find("Content-Type") != request.headers.end())
+            {
+                contentType = request.headers["Content-Type"];
+            }
 
             auto clIt = request.headers.find("Content-Length");
             if (clIt != request.headers.end())
             {
                 for (char c : clIt->second)
                 {
-                    if (c < '0' || c > '9') break;
+                    if (c < '0' || c > '9')
+                        break;
                     contentLength = contentLength * 10 + (c - '0');
                 }
             }
 
             if (contentLength == 0)
             {
-                Serial.println("Extracing Body - Content Length is 0");
                 return request;
             }
 
-            if (request.headers["Content-Type"].find("application/json") != std::string::npos)
+            if (contentType.find("application/json") != std::string::npos)
             {
-                Serial.println("Extracing Body - Content Json");
+                if (contentLength > BODY_SIZE_TRESHOLD)
+                {
+                    request.rejected = true;
+                    request.error = "JSON Request Body too big!";
+                    return request;
+                }
+
                 request.readBodyAsText(client_socket, contentLength);
                 deserializeJson(request.body, request.bodyRaw);
+            }
+            else if (
+                contentLength > BODY_SIZE_TRESHOLD ||
+                contentType.find("multipart/form-data") != std::string::npos ||
+                contentType.find("application/octet-stream") != std::string::npos ||
+                contentType.find("image/") != std::string::npos)
+            {
+                request.readBodyToFile(client_socket, contentLength);
             }
             else
             {

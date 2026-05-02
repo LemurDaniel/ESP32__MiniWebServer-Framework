@@ -29,6 +29,8 @@ namespace ESP32WebServer
     inline void post_WebsiteUpdate(Request const &req, Response &res)
     {
 
+        Serial.print("File located at: ");
+        Serial.println(req.filePath.c_str());
     }
 
     class AdminRouter : public ESP32WebServer::Router
@@ -36,7 +38,7 @@ namespace ESP32WebServer
     public:
         AdminRouter()
         {
-            use("/web", auth_handler);
+            // use("/web", auth_handler);
 
             route("POST", "/web", post_WebsiteUpdate);
         }
