@@ -87,7 +87,7 @@ namespace ESP32WebServer
         void defaultAdminSalt(std::string &salt);
         void defaultAdminCredentials(std::string &username, std::string &password);
 
-        void processHandlers(const Request &req, Response &res);
+        void processHandlers(Request &req, Response &res);
         void handleClient(int client_socket);
 
         // Map of path to file path for static file serving

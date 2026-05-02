@@ -2,8 +2,6 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
-// This is work in progress!
-
 #pragma once
 
 #include <Arduino.h>
@@ -20,6 +18,13 @@
 
 namespace ESP32WebServer
 {
+    static inline void restartTask(void *param)
+    {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        ESP.restart();
+        vTaskDelete(nullptr);
+    }
+
     class TokenManager
     {
     public:
@@ -1032,14 +1037,13 @@ namespace ESP32WebServer
         }
     }
 
-    inline void auth_handler(const Request &req, Response &res)
+    inline void auth_handler(Request &req, Response &res)
     {
 
         // This is not the most elegant way but works
         if (
             req.path == "/admin" ||
-            req.path == "/admin/login"
-        )
+            req.path == "/admin/login")
         {
             return;
         }
@@ -1109,7 +1113,7 @@ namespace ESP32WebServer
      *
      **/
 
-    inline void post_AdminUpdateAuth(Request const &req, Response &res)
+    inline void post_AdminUpdateAuth(Request &req, Response &res)
     {
 
         if (!req.body["admin_user"].is<std::string>() || !req.body["admin_pwd"].is<std::string>())
@@ -1131,11 +1135,10 @@ namespace ESP32WebServer
         }
     }
 
-    inline void post_AdminRestart(Request const &req, Response &res)
+    inline void post_AdminRestart(Request &req, Response &res)
     {
         res.OK().text("Restarting...");
-        delay(1000);
-        ESP.restart();
+        xTaskCreate(restartTask, "restart", 1024, nullptr, 1, nullptr);
     }
 
     /*-------------------------------------------------------------------------------------------------
@@ -1143,7 +1146,7 @@ namespace ESP32WebServer
      * Handle WiFi Configuration
      *
      **/
-    inline void get_WiFiActive(Request const &req, Response &res)
+    inline void get_WiFiActive(Request &req, Response &res)
     {
         Serial.println("Fetching current WiFi configuration for admin dashboard");
         ESP32WebServer::WiFiConfig wifiConfig = WiFiUtility::instance().getActiveWiFi();
@@ -1157,7 +1160,7 @@ namespace ESP32WebServer
         res.OK().json(doc);
     }
 
-    inline void get_WiFiScan(Request const &req, Response &res)
+    inline void get_WiFiScan(Request &req, Response &res)
     {
         std::vector<ESP32WebServer::WiFiConfig> options = WiFiUtility::instance().scanNetworks();
 
@@ -1174,7 +1177,7 @@ namespace ESP32WebServer
         res.OK().json(doc);
     }
 
-    inline void get_WiFiSavedNetworks(Request const &req, Response &res)
+    inline void get_WiFiSavedNetworks(Request &req, Response &res)
     {
         std::vector<ESP32WebServer::WiFiConfig> options = WiFiUtility::instance().getSavedNetworks();
 
@@ -1191,7 +1194,7 @@ namespace ESP32WebServer
         res.OK().json(doc);
     }
 
-    inline void delete_WiFiSavedNetwork(Request const &req, Response &res)
+    inline void delete_WiFiSavedNetwork(Request &req, Response &res)
     {
 
         if (req.body.isNull() || !req.body["ssid"].is<std::string>())
@@ -1205,7 +1208,7 @@ namespace ESP32WebServer
         res.OK().text("Network removed");
     }
 
-    inline void post_WiFiSavedNetwork(Request const &req, Response &res)
+    inline void post_WiFiSavedNetwork(Request &req, Response &res)
     {
 
         if (!req.body["ssid"].is<std::string>() || !req.body["password"].is<std::string>())

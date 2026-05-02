@@ -2,8 +2,6 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
-// This is work in progress!
-
 #pragma once
 
 #include <Arduino.h>

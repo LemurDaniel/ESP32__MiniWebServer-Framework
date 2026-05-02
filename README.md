@@ -160,8 +160,8 @@ src/routes/
 namespace routes_sensors { ... }
 
 // Functions: {method}_{endpoint}
-void get_temperature(const Request &req, Response &res) { ... }
-void post_led_control(const Request &req, Response &res) { ... }
+void get_temperature(Request &req, Response &res) { ... }
+void post_led_control(Request &req, Response &res) { ... }
 ```
 
 ### 1. Create the header file

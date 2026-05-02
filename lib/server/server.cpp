@@ -70,7 +70,7 @@ namespace ESP32WebServer
         Response response = Response();
 
         // Parse the raw HTTP request into a structured Request object
-        const Request &request = Request::parse(client_socket);
+        Request request = Request::parse(client_socket);
         if (request.rejected)
         {
             response.status(413).text(request.error);
@@ -271,6 +271,7 @@ namespace ESP32WebServer
             else if (ext == ".html")
                 res.header("Content-Type", "text/html; charset=utf-8");
         };
+
         addRoute("GET", path, handler);
     }
 

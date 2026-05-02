@@ -12,7 +12,7 @@
 
 namespace ESP32WebServer
 {
-    using RequestHandler = std::function<void(const Request &, Response &)>;
+    using RequestHandler = std::function<void(Request &, Response &)>;
 
     class Router
     {
