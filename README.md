@@ -1,6 +1,13 @@
+> [!NOTE]
+> 🤖 **AI Notice:** Parts of this repository (code, fixes and documentation) were created or revised with the help of AI ([Claude Code](https://claude.com/claude-code)). All changes were reviewed by the maintainer.
+
 # 🚀 (Prototype) ESP32 Mini WebServer Framework
 
 <div align="center">
+
+<img src=".github/social-preview.png" alt="ESP32 Mini WebServer Framework – Express-style routing, admin dashboard, WiFi management and OTA updates" width="800">
+
+<br><br>
 
 ![ESP32](https://img.shields.io/badge/ESP32-000000?style=for-the-badge&logo=Espressif&logoColor=white)
 ![Arduino](https://img.shields.io/badge/Arduino-00979D?style=for-the-badge&logo=Arduino&logoColor=white)

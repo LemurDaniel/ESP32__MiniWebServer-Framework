@@ -1,0 +1,129 @@
+<!doctype html>
+<!--
+  Source of .github/social-preview.png (1280x640, GitHub social preview).
+  Re-render with headless Edge/Chrome:
+    msedge --headless --hide-scrollbars --window-size=1280,640 --screenshot=social-preview.png social-preview.html
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #e6edf3;
+    background:
+      radial-gradient(ellipse 700px 500px at 88% 10%, rgba(231, 53, 44, .28), transparent 70%),
+      radial-gradient(ellipse 650px 450px at 5% 100%, rgba(52, 152, 219, .30), transparent 70%),
+      #0b1020;
+    position: relative;
+  }
+  /* PCB traces in the background */
+  .pcb { position: absolute; inset: 0; opacity: .16; }
+  .wrap {
+    position: absolute; inset: 60px 64px;
+    display: grid; grid-template-columns: 1fr 540px; gap: 48px; align-items: center;
+  }
+  .eyebrow {
+    font: 600 18px "Cascadia Code", Consolas, monospace;
+    color: #6fb6ff; letter-spacing: .04em; margin-bottom: 18px;
+  }
+  h1 { font-size: 64px; font-weight: 700; line-height: 1.04; letter-spacing: -.02em; }
+  h1 span {
+    background: linear-gradient(90deg, #e7352c, #ff8a3d);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tag { margin-top: 22px; font-size: 24px; line-height: 1.4; color: #aab4c3; }
+  .chips { margin-top: 28px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font: 600 15px "Segoe UI", sans-serif; padding: 6px 11px; border-radius: 999px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: #cdd6e3;
+  }
+  .card {
+    background: rgba(13, 17, 30, .88); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.45); overflow: hidden;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.08);
+    font: 14px "Cascadia Code", Consolas, monospace; color: #8b97a8;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .bar .name { margin-left: 8px; }
+  pre {
+    padding: 20px 22px; font: 16.5px/1.6 "Cascadia Code", Consolas, monospace; color: #d6deeb;
+    font-variant-ligatures: none;
+  }
+  .k { color: #c792ea; } .t { color: #82aaff; } .s { color: #c3e88d; }
+  .c { color: #637777; font-style: italic; } .f { color: #ffcb6b; } .n { color: #f78c6c; }
+  .serial {
+    border-top: 1px solid rgba(255,255,255,.08); padding: 14px 22px;
+    font: 15px/1.55 "Cascadia Code", Consolas, monospace; color: #8b97a8;
+  }
+  .serial b { color: #2ecc71; font-weight: 600; }
+  .footer {
+    position: absolute; left: 64px; bottom: 26px;
+    font: 15px "Cascadia Code", Consolas, monospace; color: #6b7686;
+  }
+  .ai-notice {
+    position: absolute; right: 64px; bottom: 22px;
+    font: 600 13px "Segoe UI", sans-serif; color: #8b97a8; padding: 4px 10px;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 999px; background: rgba(255,255,255,.04);
+  }
+</style>
+</head>
+<body>
+  <svg class="pcb" viewBox="0 0 1280 640" fill="none" stroke="#2ecc71" stroke-width="2">
+    <path d="M0 520 H180 L230 470 H420"/><circle cx="420" cy="470" r="5"/>
+    <path d="M0 560 H240 L280 600 H520"/><circle cx="520" cy="600" r="5"/>
+    <path d="M60 0 V80 L110 130 H300"/><circle cx="300" cy="130" r="5"/>
+    <path d="M1280 600 H1120 L1080 560 H900"/><circle cx="900" cy="560" r="5"/>
+    <path d="M1280 40 H1180 L1140 80 V180"/><circle cx="1140" cy="180" r="5"/>
+    <path d="M640 640 V600 L680 560 H760"/><circle cx="760" cy="560" r="5"/>
+  </svg>
+
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">// PlatformIO · Arduino · ESP32</div>
+      <h1>ESP32 Mini<br><span>WebServer</span><br>Framework</h1>
+      <p class="tag">Express-style routing, admin dashboard,<br>WiFi management &amp; OTA updates.</p>
+      <div class="chips">
+        <span class="chip">📡 WiFi Manager</span>
+        <span class="chip">🔐 Auth</span>
+        <span class="chip">💾 LittleFS + NVS</span>
+        <span class="chip">🔄 OTA</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="bar">
+        <span class="dot" style="background:#ff5f57"></span>
+        <span class="dot" style="background:#febc2e"></span>
+        <span class="dot" style="background:#28c840"></span>
+        <span class="name">src/main.cpp</span>
+      </div>
+<pre><span class="k">#include</span> <span class="s">&lt;MiniServer.h&gt;</span>
+
+<span class="k">auto</span> *Server = <span class="k">new</span> <span class="t">EspWeb::MiniServer</span>();
+
+Server-&gt;<span class="f">dns</span>(<span class="s">"myESP32"</span>);
+Server-&gt;<span class="f">use</span>(Server-&gt;<span class="f">cors</span>());
+
+Server-&gt;<span class="f">get</span>(<span class="s">"/hello"</span>, [](<span class="t">Request</span> &amp;req,
+                       <span class="t">Response</span> &amp;res) {
+    res.<span class="f">text</span>(<span class="s">"Hello from ESP32!"</span>).<span class="f">OK</span>();
+});
+
+Server-&gt;<span class="f">start</span>(<span class="n">80</span>);</pre>
+      <div class="serial">
+        <b>✔</b> WiFi connected · 192.168.178.85<br>
+        <b>✔</b> http://myESP32.local listening on :80
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">github.com/LemurDaniel/ESP32__MiniWebServer-Framework</div>
+  <div class="ai-notice">🤖 AI-generated artwork</div>
+</body>
+</html>
