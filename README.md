@@ -57,7 +57,7 @@ board = <your-board>
 board_build.filesystem = littlefs
 
 lib_deps =
-    https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework.git#v1.0.0
+    https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework.git#v1.1.0
 
 ; List any static files you want embedded in the LittleFS image
 board_build.include_files_txt =
@@ -66,7 +66,7 @@ board_build.include_files_txt =
 ```
 
 > [!TIP]
-> 📌 Always pin a release tag (`#v1.0.0`). Without a tag PlatformIO pulls the latest `master`, which may contain untested or breaking changes. All releases are listed under [Releases](https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework/releases).
+> 📌 Always pin a release tag (`#v1.1.0`). Without a tag PlatformIO pulls the latest `master`, which may contain untested or breaking changes. All releases are listed under [Releases](https://github.com/LemurDaniel/ESP32__MiniWebServer-Framework/releases).
 >
 > The framework is tested with `platform = espressif32@~7.0.1` (Arduino core 2.0.17). Other platform versions may work but are not tested.
 

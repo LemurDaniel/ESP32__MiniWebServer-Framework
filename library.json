@@ -1,6 +1,6 @@
 {
   "name": "ESP32MiniWebServer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lightweight web server framework for ESP32 with built-in admin dashboard, WiFi management, and OTA updates.",
   "keywords": [
     "esp32",
