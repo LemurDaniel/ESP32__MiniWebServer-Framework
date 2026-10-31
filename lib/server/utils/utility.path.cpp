@@ -2,136 +2,157 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Implementation of utility.path.h.
+
+//
+//   Chapters:
+//     HELPERS         Splits a path into a segment stack.
+//     PATH NODE       Insert and resolve in the trie.
+//     RESOLVE PATHS   The PathResolver wrapper.
+//
+
+#include <algorithm>
+
 #include <utils/utility.path.h>
 
 namespace EspWeb
 {
+    // ===========================================================================
+    // ===============================   HELPERS   ===============================
+    // ===========================================================================
+    //
+    //   toSegmentStack   Splits a path into segments, the first segment last.
+    //   appendHandlers   Appends one handler chain to another.
+    //
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Path Resolver
-     *
-     **/
-
-    void PathResolver::add(const std::string &path, const std::vector<RequestHandler> &handlers)
+    namespace
     {
-        this->root.add(path, handlers);
-    }
-    std::vector<RequestHandler> PathResolver::resolve(const std::string &path, Request &req, bool accumulate)
-    {
-        return this->root.resolve(path, req, accumulate);
+        // The recursion consumes segments from the back, so the first segment goes last:
+        // "GET/users/:id" => ["GET", "users", ":id"] => [":id", "users", "GET"]
+        std::vector<std::string> toSegmentStack(const std::string &path)
+        {
+            std::vector<std::string> segments = fileHandler.split(path, "/");
+            std::reverse(segments.begin(), segments.end());
+            return segments;
+        }
+
+        void appendHandlers(std::vector<RequestHandler> &target, const std::vector<RequestHandler> &source)
+        {
+            target.insert(target.end(), source.begin(), source.end());
+        }
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Path Node - Messy Code incoming - This is supposed to be a TRIE-Structure
-     *
-     **/
+    // ===========================================================================
+    // ==============================   PATH NODE   ==============================
+    // ===========================================================================
+    //
+    //   add       Walks or creates one node per segment, stores the handlers at the end.
+    //   resolve   Walks the matching nodes, literal before parameter.
+    //
+
+    void PathNode::add(const std::string &path, const std::vector<RequestHandler> &handlers)
+    {
+        std::vector<std::string> segments = toSegmentStack(path);
+        this->add(segments, handlers);
+    }
+
+    void PathNode::add(std::vector<std::string> &path, const std::vector<RequestHandler> &handlers)
+    {
+        if (path.empty())
+        {
+            appendHandlers(this->handlers, handlers);
+            return;
+        }
+
+        std::string key = path.back();
+        std::string segment = path.back();
+        path.pop_back();
+
+        // A route parameter is stored under ":", the node keeps its name.
+        // ":id" => key ":", segment "id"
+        if (!key.empty() && key[0] == ':')
+        {
+            segment = key.substr(1);
+            key = ":";
+        }
+
+        // operator[] creates the node on first use.
+        PathNode &child = nodes[key];
+        if (child.segment.empty())
+        {
+            child.segment = segment;
+        }
+        child.add(path, handlers);
+    }
+
     std::vector<RequestHandler> PathNode::resolve(const std::string &path, Request &req, bool accumulate)
     {
-        std::vector<std::string> segments = fileHandler.split(path, "/");
-        std::vector<std::string> reversed;
-        while (segments.size() > 0)
-        {
-            reversed.push_back(segments[segments.size() - 1]);
-            segments.pop_back();
-        }
-        return this->resolve(reversed, req, accumulate);
+        std::vector<std::string> segments = toSegmentStack(path);
+        return this->resolve(segments, req, accumulate);
     }
 
+    /*
+        > When no segment is left
+            - Return the handlers of this node.
+        > Otherwise (middlewares also collect the handlers of this node on the way)
+            - If a literal child matches the segment, descend into it.
+            - If a parameter child exists, store the segment as route parameter and descend into it.
+            - Otherwise stop with what was collected.
+    */
     std::vector<RequestHandler> PathNode::resolve(std::vector<std::string> &path, Request &req, bool accumulate)
     {
-        if (path.size() <= 0)
+        // When no segment is left
+        if (path.empty())
         {
             return this->handlers;
         }
 
-        // Accumulated handlers
+        // Otherwise
         std::vector<RequestHandler> handlers;
         if (accumulate)
         {
-            for (const RequestHandler &handler : this->handlers)
-            {
-                handlers.push_back(handler);
-            }
+            appendHandlers(handlers, this->handlers);
         }
 
-        const std::string segment = path[path.size() - 1];
+        const std::string segment = path.back();
         path.pop_back();
 
+        // Literal child
         auto node = nodes.find(segment);
         if (node != nodes.end())
         {
-            const std::vector<RequestHandler> &result = nodes[segment].resolve(path, req, accumulate);
-            for (const RequestHandler &handler : result)
-            {
-                handlers.push_back(handler);
-            }
-
+            appendHandlers(handlers, node->second.resolve(path, req, accumulate));
             return handlers;
         }
 
-        // Search for route parameter
+        // Parameter child
         node = nodes.find(":");
         if (node != nodes.end())
         {
             req.route.insert({node->second.segment, segment});
-            const std::vector<RequestHandler> &result = nodes[":"].resolve(path, req, accumulate);
-            for (const RequestHandler &handler : result)
-            {
-                handlers.push_back(handler);
-            }
+            appendHandlers(handlers, node->second.resolve(path, req, accumulate));
             return handlers;
         }
 
         return handlers;
     }
 
-    void PathNode::add(const std::string &path, const std::vector<RequestHandler> &handlers)
+    // ===========================================================================
+    // ============================   RESOLVE PATHS   ============================
+    // ===========================================================================
+    //
+    //   add       Delegates to the root node.
+    //   resolve   Delegates to the root node.
+    //
+
+    void PathResolver::add(const std::string &path, const std::vector<RequestHandler> &handlers)
     {
-        std::vector<std::string> segments = fileHandler.split(path, "/");
-        std::vector<std::string> reversed;
-        while (segments.size() > 0)
-        {
-            reversed.push_back(segments[segments.size() - 1]);
-            segments.pop_back();
-        }
-        this->add(reversed, handlers);
+        this->root.add(path, handlers);
     }
 
-    void PathNode::add(std::vector<std::string> &path, const std::vector<RequestHandler> &handlers)
+    std::vector<RequestHandler> PathResolver::resolve(const std::string &path, Request &req, bool accumulate)
     {
-        if (path.size() <= 0)
-        {
-            for (const RequestHandler &handler : handlers)
-            {
-                this->handlers.push_back(handler);
-            }
-            return;
-        }
-
-        std::string segment = path[path.size() - 1];
-        std::string normalized = path[path.size() - 1];
-        path.pop_back();
-
-        // If its a route parameter
-        if (segment[0] == ':')
-        {
-            normalized = segment.substr(1);
-            segment = ":";
-        }
-
-        // If no node already exists, create one.
-        auto node = nodes.find(segment);
-        if (node == nodes.end())
-        {
-            nodes[segment].segment = normalized;
-            nodes[segment].add(path, handlers);
-        }
-        else
-        {
-            node->second.add(path, handlers);
-        }
+        return this->root.resolve(path, req, accumulate);
     }
-
 }

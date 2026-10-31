@@ -2,10 +2,110 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Implementation of response.h.
+
+//
+//   Chapters:
+//     HELPERS        Reason phrases, MIME types and content types.
+//     HEADERS        Custom headers and the header block.
+//     SENDING        send and the socket timeout.
+//     STREAMING      Chunked transfer encoding.
+//     FINALIZE       Stops the remaining handlers.
+//     STATUS CODES   status and the shortcuts with a default body.
+//     BODY           File, text, JSON or HTML body.
+//     CONTENT TYPE   Content-Type setters without a body.
+//
+
 #include <router/response.h>
+#include <utils/utility.log.h>
 
 namespace EspWeb
 {
+    // ===========================================================================
+    // ===============================   HELPERS   ===============================
+    // ===========================================================================
+    //
+    //   CONTENT_TYPE_*   Content types set by the response.
+    //   FILE_CHUNK_SIZE  Bytes per write when sending a file.
+    //   reasonPhrase     Text of the status line for a status code.
+    //   mimeTypeFor      Content type of a file path by its extension.
+    //
+
+    namespace
+    {
+        constexpr const char *CONTENT_TYPE_BINARY = "application/octet-stream";
+        constexpr const char *CONTENT_TYPE_TEXT = "text/plain; charset=utf-8";
+        constexpr const char *CONTENT_TYPE_JSON = "application/json";
+        constexpr const char *CONTENT_TYPE_HTML = "text/html; charset=utf-8";
+
+        /** @brief One TCP segment on Ethernet MTU (1500 - 40 bytes IP/TCP headers). */
+        constexpr size_t FILE_CHUNK_SIZE = 1460;
+
+        const char *reasonPhrase(int statusCode)
+        {
+            switch (statusCode)
+            {
+            case 200:
+                return "OK";
+            case 201:
+                return "Created";
+            case 204:
+                return "No Content";
+            case 301:
+                return "Moved Permanently";
+            case 302:
+                return "Found";
+            case 400:
+                return "Bad Request";
+            case 401:
+                return "Unauthorized";
+            case 403:
+                return "Forbidden";
+            case 404:
+                return "Not Found";
+            case 413:
+                return "Payload Too Large";
+            case 500:
+                return "Internal Server Error";
+            case 503:
+                return "Service Unavailable";
+            default:
+                return "Unknown";
+            }
+        }
+
+        // "/web/index.html" => ".html" => "text/html; charset=utf-8"
+        // "/web/data.bin"   => ".bin"  => nullptr
+        const char *mimeTypeFor(const std::string &path)
+        {
+            static const std::map<std::string, const char *> MIME_TYPES = {
+                {".css", "text/css"},         {".html", CONTENT_TYPE_HTML},
+                {".ico", "image/x-icon"},     {".js", "application/javascript"},
+                {".json", CONTENT_TYPE_JSON}, {".jpeg", "image/jpeg"},
+                {".jpg", "image/jpeg"},       {".png", "image/png"},
+                {".svg", "image/svg+xml"},    {".txt", CONTENT_TYPE_TEXT},
+                {".xml", "application/xml"},
+            };
+
+            const size_t dot = path.find_last_of('.');
+            if (dot == std::string::npos)
+            {
+                return nullptr;
+            }
+
+            const auto entry = MIME_TYPES.find(path.substr(dot));
+            return entry != MIME_TYPES.end() ? entry->second : nullptr;
+        }
+    }
+
+    // ===========================================================================
+    // ===============================   HEADERS   ===============================
+    // ===========================================================================
+    //
+    //   header        Adds or overwrites one header.
+    //   sendHeaders   Writes the status line and the header block once.
+    //
 
     Response &Response::header(const std::string &key, const std::string &value)
     {
@@ -13,6 +113,10 @@ namespace EspWeb
         return *this;
     }
 
+    // HTTP/1.1 200 OK\r\n
+    // Content-Type: text/plain\r\n
+    // Connection: close\r\n
+    // \r\n
     void Response::sendHeaders()
     {
         if (isHeaderSent)
@@ -27,58 +131,71 @@ namespace EspWeb
         header = "HTTP/1.1 ";
         header += std::to_string(statusCode);
         header += " ";
-        switch (statusCode)
-        {
-        case 200:
-            header += "OK";
-            break;
-        case 201:
-            header += "Created";
-            break;
-        case 204:
-            header += "No Content";
-            break;
-        case 301:
-            header += "Moved Permanently";
-            break;
-        case 302:
-            header += "Found";
-            break;
-        case 400:
-            header += "Bad Request";
-            break;
-        case 401:
-            header += "Unauthorized";
-            break;
-        case 403:
-            header += "Forbidden";
-            break;
-        case 404:
-            header += "Not Found";
-            break;
-        case 500:
-            header += "Internal Server Error";
-            break;
-        default:
-            header += "Unknown";
-            break;
-        }
+        header += reasonPhrase(statusCode);
         header += "\r\n";
-        for (const auto &kv : headers)
+        for (const auto &entry : headers)
         {
-            header += kv.first;
+            header += entry.first;
             header += ": ";
-            header += kv.second;
+            header += entry.second;
             header += "\r\n";
         }
         header += "Connection: close\r\n\r\n";
         write(socket, header.c_str(), header.size());
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * streaming
-     **/
+    // ===========================================================================
+    // ===============================   SENDING   ===============================
+    // ===========================================================================
+    //
+    //   send         Headers with Content-Length, then the body or the file.
+    //   setTimeout   Send and receive timeout of the socket.
+    //
+
+    void Response::send()
+    {
+        if (isSent || isStreaming)
+        {
+            return;
+        }
+        isSent = true;
+        finalized = true;
+
+        header("Content-Length", std::to_string(isFileMode ? fileSize : body.size())).sendHeaders();
+
+        // In-memory body
+        if (!isFileMode)
+        {
+            write(socket, body.c_str(), body.size());
+            return;
+        }
+
+        // File body, the size was announced in Content-Length, so never more is sent.
+        File file = LittleFS.open(filePath.c_str(), "r");
+        if (!file)
+        {
+            ESPWEB_LOG_ERROR("Response", "File %s disappeared before send()", filePath.c_str());
+            return;
+        }
+
+        char chunk[FILE_CHUNK_SIZE];
+        size_t totalSent = 0;
+        while (file.available() && totalSent < fileSize)
+        {
+            const size_t n = file.readBytes(chunk, sizeof(chunk));
+            if (n == 0)
+            {
+                break;
+            }
+
+            write(socket, chunk, n);
+            totalSent += n;
+        }
+        file.close();
+
+        ESPWEB_LOG_DEBUG("Response", "File transfer of %s completed: %u bytes sent", filePath.c_str(),
+                         (unsigned)totalSent);
+    }
 
     void Response::setTimeout(int seconds)
     {
@@ -90,40 +207,49 @@ namespace EspWeb
         setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     }
 
-    void Response::endStream()
-    {
-        if (!isStreaming || isSent)
-            return;
-
-        isSent = true;
-        write(socket, "0\r\n\r\n", 5);
-    }
+    // ===========================================================================
+    // ==============================   STREAMING   ==============================
+    // ===========================================================================
+    //
+    //   beginStream   Sends the headers with Transfer-Encoding: chunked.
+    //   sendChunk     Sends one chunk, from a string or raw bytes.
+    //   endStream     Sends the final zero-length chunk.
+    //
 
     void Response::beginStream()
     {
         if (isSent)
+        {
             return;
+        }
 
         finalized = true;
         isStreaming = true;
 
+        // Small chunks go out immediately instead of waiting for Nagle's algorithm.
         int flag = 1;
         setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
         if (headers.find("Content-Type") == headers.end())
-            header("Content-Type", "text/plain; charset=utf-8");
+        {
+            text();
+        }
 
         header("Cache-Control", "no-cache");
         header("Transfer-Encoding", "chunked").sendHeaders();
     }
 
+    // One chunk: "<size in hex>\r\n<data>\r\n"
+    // "hello" => "5\r\nhello\r\n"
     void Response::sendChunk(const uint8_t *data, size_t len)
     {
         if (isSent || !isStreaming || len == 0)
+        {
             return;
+        }
 
         char sizeHex[16];
-        int hexLen = snprintf(sizeHex, sizeof(sizeHex), "%X\r\n", len);
+        const int hexLen = snprintf(sizeHex, sizeof(sizeHex), "%X\r\n", (unsigned)len);
 
         std::string frame;
         frame.reserve(hexLen + len + 2);
@@ -135,57 +261,26 @@ namespace EspWeb
 
     void Response::sendChunk(const std::string &data)
     {
-        Serial.println(data.c_str());
         sendChunk(reinterpret_cast<const uint8_t *>(data.data()), data.size());
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * sending
-     **/
-
-    void Response::send()
+    void Response::endStream()
     {
-        if (isSent || isStreaming)
+        if (!isStreaming || isSent)
         {
             return;
         }
+
         isSent = true;
-        finalized = true;
-        isStreaming = false;
-
-        // Write Headers
-        header("Content-Length", std::to_string(isFileMode ? fileSize : body.size())).sendHeaders();
-
-        // Write Content
-        if (!isFileMode)
-        {
-            write(socket, body.c_str(), body.size());
-            return;
-        }
-
-        File file = LittleFS.open(filePath.c_str(), "r");
-        if (!file)
-        {
-            Serial.println("❌ File disappeared before send()");
-            return;
-        }
-        char chunk[1460];
-        size_t totalSent = 0;
-        while (file.available() && totalSent < fileSize)
-        {
-            size_t n = file.readBytes(chunk, sizeof(chunk));
-            if (n > 0)
-            {
-                write(socket, chunk, n);
-                totalSent += n;
-            }
-            else
-                break;
-        }
-        file.close();
-        Serial.printf("File transfer completed: %zu bytes sent\n", totalSent);
+        write(socket, "0\r\n\r\n", 5);
     }
+
+    // ===========================================================================
+    // ==============================   FINALIZE   ===============================
+    // ===========================================================================
+    //
+    //   finalize   Marks the response as done for the handler pipeline.
+    //
 
     Response &Response::finalize()
     {
@@ -193,68 +288,58 @@ namespace EspWeb
         return *this;
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Common status codes
-     **/
+    // ===========================================================================
+    // ============================   STATUS CODES   =============================
+    // ===========================================================================
+    //
+    //   status                  Sets any status code.
+    //   statusWithDefaultBody   Sets a status and a default body, the shortcuts delegate to it.
+    //   Redirect                302 with a Location header.
+    //
+
+    Response &Response::status(int status)
+    {
+        this->statusCode = status;
+        return *this;
+    }
+
+    Response &Response::statusWithDefaultBody(int status, const char *defaultBody)
+    {
+        if (this->body.empty())
+        {
+            this->text(defaultBody);
+        }
+        this->statusCode = status;
+        return *this;
+    }
+
     Response &Response::OK()
     {
-        if (this->body.empty())
-        {
-            this->text("OK");
-        }
-        this->statusCode = 200;
-        return *this;
+        return statusWithDefaultBody(200, "OK");
     }
-
-    Response &Response::NotFound()
-    {
-        if (this->body.empty())
-        {
-            this->text("Not Found");
-        }
-        this->statusCode = 404;
-        return *this;
-    }
-
     Response &Response::Created()
     {
-        if (this->body.empty())
-            this->text("Created");
-        this->statusCode = 201;
-        return *this;
+        return statusWithDefaultBody(201, "Created");
     }
-
     Response &Response::BadRequest()
     {
-        if (this->body.empty())
-            this->text("Bad Request");
-        this->statusCode = 400;
-        return *this;
+        return statusWithDefaultBody(400, "Bad Request");
     }
-
     Response &Response::Unauthorized()
     {
-        if (this->body.empty())
-            this->text("Unauthorized");
-        this->statusCode = 401;
-        return *this;
+        return statusWithDefaultBody(401, "Unauthorized");
     }
-
     Response &Response::Forbidden()
     {
-        if (this->body.empty())
-            this->text("Forbidden");
-        this->statusCode = 403;
-        return *this;
+        return statusWithDefaultBody(403, "Forbidden");
     }
-
+    Response &Response::NotFound()
+    {
+        return statusWithDefaultBody(404, "Not Found");
+    }
     Response &Response::InternalServerError()
     {
-        if (this->body.empty())
-            this->text("Internal Server Error");
-        this->statusCode = 500;
-        return *this;
+        return statusWithDefaultBody(500, "Internal Server Error");
     }
 
     Response &Response::Redirect(const std::string &location)
@@ -264,123 +349,94 @@ namespace EspWeb
         return *this;
     }
 
-    Response &Response::status(int status)
-    {
-        this->statusCode = status;
-        return *this;
-    }
+    // ===========================================================================
+    // ================================   BODY   =================================
+    // ===========================================================================
+    //
+    //   file   Queues a LittleFS file, its content is read in send.
+    //   text   Plain-text body.
+    //   json   Serialized JSON body.
+    //   html   HTML body.
+    //
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Response body helpers for different content types
-     **/
     Response &Response::file(const std::string &path)
     {
         File file = LittleFS.open(path.c_str(), "r");
         if (!file)
         {
-            Serial.println("❌ File not found - sending 404");
+            ESPWEB_LOG_WARN("Response", "File %s not found, sending 404", path.c_str());
             this->NotFound().text("File Not Found");
             return *this;
-        }
-
-        if (file.size() == 0)
-        {
-            Serial.println("⚠️  WARNING: File size is 0 bytes!");
         }
 
         this->fileSize = file.size();
         this->filePath = path;
         this->isFileMode = true;
-
-        Serial.printf("✅ File '%s' is ready to be served (size: %d bytes)\n", path.c_str(), this->fileSize);
-
         file.close();
+
+        if (this->fileSize == 0)
+        {
+            ESPWEB_LOG_WARN("Response", "File %s is empty", path.c_str());
+        }
+        ESPWEB_LOG_DEBUG("Response", "File %s is ready to be served (%u bytes)", path.c_str(),
+                         (unsigned)this->fileSize);
 
         this->status(200);
 
-        std::string ext;
-        const auto dot = path.find_last_of('.');
-        if (dot != std::string::npos)
+        const char *mimeType = mimeTypeFor(path);
+        if (nullptr == mimeType)
         {
-            ext = path.substr(dot);
+            return this->binary();
         }
 
-        static const std::map<std::string, const char *> mimeTypes = {
-            {".css", "text/css"},
-            {".html", "text/html; charset=utf-8"},
-            {".ico", "image/x-icon"},
-            {".js", "application/javascript"},
-            {".json", "application/json"},
-            {".jpeg", "image/jpeg"},
-            {".jpg", "image/jpeg"},
-            {".png", "image/png"},
-            {".svg", "image/svg+xml"},
-            {".txt", "text/plain; charset=utf-8"},
-            {".xml", "application/xml"},
-        };
-
-        auto it = mimeTypes.find(ext);
-        if (it != mimeTypes.end())
-            this->header("Content-Type", it->second);
-        else
-            this->binary();
-
-        return *this;
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Content Type setters
-     **/
-    Response &Response::binary()
-    {
-        this->header("Content-Type", "application/octet-stream");
-        return *this;
-    }
-
-    Response &Response::text()
-    {
-        this->header("Content-Type", "text/plain; charset=utf-8");
-        return *this;
-    }
-
-    Response &Response::json()
-    {
-        this->header("Content-Type", "application/json");
-        return *this;
-    }
-
-    Response &Response::html()
-    {
-        this->header("Content-Type", "text/html; charset=utf-8");
-        return *this;
+        return this->header("Content-Type", mimeType);
     }
 
     Response &Response::text(const std::string &text)
     {
         this->body = text;
         this->isFileMode = false;
-        this->text();
-        return *this;
+        return this->text();
     }
 
     Response &Response::json(const JsonDocument &bodyJson)
     {
-        std::string jsonStr;
-        serializeJson(bodyJson, jsonStr);
-
-        this->body = jsonStr;
+        this->body.clear();
+        serializeJson(bodyJson, this->body);
         this->isFileMode = false;
-        this->json();
-        return *this;
+        return this->json();
     }
 
     Response &Response::html(const std::string &htmlBody)
     {
         this->text(htmlBody);
-        this->html();
-        return *this;
+        return this->html();
     }
 
+    // ===========================================================================
+    // ============================   CONTENT TYPE   =============================
+    // ===========================================================================
+    //
+    //   binary   application/octet-stream
+    //   text     text/plain
+    //   json     application/json
+    //   html     text/html
+    //
+
+    Response &Response::binary()
+    {
+        return this->header("Content-Type", CONTENT_TYPE_BINARY);
+    }
+    Response &Response::text()
+    {
+        return this->header("Content-Type", CONTENT_TYPE_TEXT);
+    }
+    Response &Response::json()
+    {
+        return this->header("Content-Type", CONTENT_TYPE_JSON);
+    }
+    Response &Response::html()
+    {
+        return this->header("Content-Type", CONTENT_TYPE_HTML);
+    }
 }

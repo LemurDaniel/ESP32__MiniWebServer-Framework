@@ -70,6 +70,17 @@ board_build.include_files_txt =
 >
 > The framework is tested with `platform = espressif32@~7.0.1` (Arduino core 2.0.17). Other platform versions may work but are not tested.
 
+### 🪵 Log level
+
+The framework logs to `Serial` with a level and component prefix (`[INFO ] [MiniServer] ...`). The default level is `INFO`, per-request details need `DEBUG`:
+
+```ini
+build_flags =
+    -D ESPWEB_LOG_LEVEL=ESPWEB_LOG_LEVEL_DEBUG   ; NONE, ERROR, WARN, INFO (default), DEBUG
+```
+
+The macros `ESPWEB_LOG_ERROR/WARN/INFO/DEBUG("Component", "format", ...)` from `utils/utility.log.h` can be used in your own routes as well.
+
 ---
 
 ## 🔐 Admin Dashboard

@@ -29,4 +29,4 @@
 ## Developer Experience
 
 - [✅] **OTA updates** — upload new firmware via HTTP endpoint
-- [ ] **Structured logging levels** — replace raw `Serial.printf` calls with DEBUG / INFO / WARN levels that can be toggled at compile time
+- [✅] **Structured logging levels** — replace raw `Serial.printf` calls with DEBUG / INFO / WARN levels that can be toggled at compile time

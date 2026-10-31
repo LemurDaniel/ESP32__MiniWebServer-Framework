@@ -2,18 +2,29 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Implementation of router.h.
+
+//
+//   Chapters:
+//     REGISTRATION   Routes and middlewares of a router.
+//     MIDDLEWARES    The built-in CORS and auth middlewares.
+//     TOKENS         Shortcuts into the TokenManager.
+//
+
 #include <router/router.h>
 
 namespace EspWeb
 {
-
     FileHandler Router::fs;
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Router
-     *
-     **/
+    // ===========================================================================
+    // ============================   REGISTRATION   =============================
+    // ===========================================================================
+    //
+    //   route   Adds a route with one or several handlers.
+    //   use     Appends a middleware to the chain of a prefix.
+    //
 
     Router::Router() {}
 
@@ -29,24 +40,17 @@ namespace EspWeb
 
     void Router::use(const std::string &prefix, const RequestHandler &handler)
     {
-        const auto &entry = middlewares.find(prefix);
-        if (entry != middlewares.end())
-        {
-            std::vector<RequestHandler> &list = entry->second;
-            list.push_back(handler);
-        }
-        else
-        {
-            std::vector<RequestHandler> list{handler};
-            middlewares.insert({prefix, list});
-        }
+        // operator[] creates the chain on first use.
+        middlewares[prefix].push_back(handler);
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Middleware
-     *
-     **/
+    // ===========================================================================
+    // =============================   MIDDLEWARES   =============================
+    // ===========================================================================
+    //
+    //   cors   Sets the allowed origin.
+    //   auth   Rejects requests without a valid token.
+    //
 
     RequestHandler Router::cors(const std::string &origin)
     {
@@ -61,15 +65,20 @@ namespace EspWeb
         return [](Request &req, Response &res)
         {
             if (!req.token.isValid())
+            {
                 res.Unauthorized().finalize();
+            }
         };
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Make Token Handleing available in Router
-     *
-     **/
+    // ===========================================================================
+    // ===============================   TOKENS   ================================
+    // ===========================================================================
+    //
+    //   getSessionToken   Delegates to TokenManager::getSessionToken.
+    //   getApiToken       Delegates to TokenManager::getApiToken.
+    //   removeApiToken    Delegates to TokenManager::removeApiToken.
+    //
 
     std::string Router::getSessionToken(long seconds, const std::vector<std::string> &actions)
     {
@@ -85,5 +94,4 @@ namespace EspWeb
     {
         TokenManager::instance().removeApiToken(name);
     }
-
 }

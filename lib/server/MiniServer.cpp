@@ -2,20 +2,105 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
-#include <MiniServer.h>
+// NOTE:
+//   Implementation of MiniServer.h.
 
-/********** TCP Server Implementation **********/
+//
+//   Chapters:
+//     HELPERS            Task settings, path normalization and the handler pipeline.
+//     LIFECYCLE          Constructor, destructor and the server socket.
+//     NETWORK            WiFi credentials and the mDNS name.
+//     ADMIN              Credentials, links, token actions and the admin switches.
+//     STATIC FILES       Single files, the index page and whole folders.
+//     ROUTING            Routers and routes per HTTP method.
+//     MIDDLEWARE         Prefix middlewares.
+//     REQUEST HANDLING   Accept task, worker tasks and the handler pipeline.
+//     START SERVER       Registers the defaults, opens the socket and starts the tasks.
+//
+
+#include <cerrno>
+
+#include <MiniServer.h>
+#include <utils/utility.log.h>
 
 namespace EspWeb
 {
+    // ===========================================================================
+    // ===============================   HELPERS   ===============================
+    // ===========================================================================
+    //
+    //   TASK_*                FreeRTOS stack sizes and priorities.
+    //   RESPONSE_UNAVAILABLE  Raw 503 answer when the worker queue is full.
+    //   normalizePath         Prefixes a path with "/" when missing.
+    //   runHandlers           Runs a handler chain until one finalizes the response.
+    //
+
+    namespace
+    {
+        constexpr uint32_t TASK_STACK_WORKER = 8192;
+        constexpr uint32_t TASK_STACK_ACCEPT = 8192;
+        constexpr uint32_t TASK_STACK_WIFI = 4096;
+
+        // The accept task runs above the workers, so new clients are queued while workers are busy.
+        constexpr UBaseType_t TASK_PRIORITY_WORKER = 1;
+        constexpr UBaseType_t TASK_PRIORITY_ACCEPT = 2;
+        constexpr UBaseType_t TASK_PRIORITY_WIFI = 1;
+
+        /** @brief Pause after a failed accept(), e.g. when all sockets are in use. */
+        constexpr uint32_t ACCEPT_RETRY_DELAY_MS = 100;
+
+        constexpr char RESPONSE_UNAVAILABLE[] = "HTTP/1.1 503 Service Unavailable\r\n"
+                                                "Content-Length: 19\r\n"
+                                                "\r\n"
+                                                "Service Unavailable";
+
+        // "api"  => "/api"
+        // "/api" => "/api"
+        // ""     => "/"
+        std::string normalizePath(const std::string &path)
+        {
+            if (!path.empty() && path[0] == '/')
+            {
+                return path;
+            }
+            return "/" + path;
+        }
+
+        /**
+         * @brief Runs a handler chain, stopping at the first handler that finalizes the response.
+         * @return `true` if a handler finalized the response.
+         */
+        bool runHandlers(const std::vector<RequestHandler> &handlers, Request &request, Response &response)
+        {
+            for (const RequestHandler &handler : handlers)
+            {
+                handler(request, response);
+                if (response.isFinalized())
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    // ===========================================================================
+    // ==============================   LIFECYCLE   ==============================
+    // ===========================================================================
+    //
+    //   MiniServer    Mounts LittleFS, formatting it on first use.
+    //   ~MiniServer   Closes the server socket.
+    //   closeServer   Closes the server socket.
+    //
 
     MiniServer::MiniServer()
     {
         if (!LittleFS.begin(true))
         {
-            Serial.println("Error setting up File System!");
+            ESPWEB_LOG_ERROR("MiniServer", "Failed to mount LittleFS");
         }
     }
+
     MiniServer::~MiniServer()
     {
         closeServer();
@@ -24,6 +109,20 @@ namespace EspWeb
     void MiniServer::closeServer()
     {
         close(_serverSocket);
+    }
+
+    // ===========================================================================
+    // ===============================   NETWORK   ===============================
+    // ===========================================================================
+    //
+    //   dns           Sets the mDNS name, registered in start.
+    //   connectWiFi   Saves a network.
+    //   clearWiFi     Removes every saved network.
+    //
+
+    void MiniServer::dns(const std::string &dnsName)
+    {
+        _dnsName = dnsName;
     }
 
     void MiniServer::connectWiFi(const std::string &ssid, const std::string &password)
@@ -36,6 +135,18 @@ namespace EspWeb
         WiFiUtility::instance().clearWiFiConfig();
     }
 
+    // ===========================================================================
+    // ================================   ADMIN   ================================
+    // ===========================================================================
+    //
+    //   defaultAdminSalt          Delegates to TokenManager::setSalt.
+    //   defaultAdminCredentials   Delegates to TokenManager::setCredentials.
+    //   setCustomLink             Adds a dashboard link.
+    //   setTokenActions           Sets the token actions, "admin" first.
+    //   disableAdmin              Disables the admin routes and pages.
+    //   disableAdminDashboard     Disables only the admin pages.
+    //
+
     void MiniServer::defaultAdminSalt(const std::string &salt)
     {
         TokenManager::instance().setSalt(salt);
@@ -46,15 +157,15 @@ namespace EspWeb
         TokenManager::instance().setCredentials(username, password);
     }
 
+    void MiniServer::setCustomLink(const std::string &name, const std::string &href)
+    {
+        CUSTOM_LINKS.insert({name, href});
+    }
+
     void MiniServer::setTokenActions(const std::vector<std::string> &actions)
     {
         TOKEN_ACTIONS = actions;
         TOKEN_ACTIONS.insert(TOKEN_ACTIONS.begin(), "admin");
-    }
-
-    void MiniServer::setCustomLink(const std::string &name, const std::string &href)
-    {
-        CUSTOM_LINKS.insert({name, href});
     }
 
     void MiniServer::disableAdmin()
@@ -62,202 +173,40 @@ namespace EspWeb
         _isAdminEnabled = false;
         disableAdminDashboard();
     }
+
     void MiniServer::disableAdminDashboard()
     {
         _isDashboardEnabled = false;
     }
 
-    void MiniServer::dns(const std::string &dnsName)
-    {
-        _dnsName = dnsName;
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Handle client requests
-     *
-     *
-     **/
-
-    void MiniServer::handleClient(int clientSocket)
-    {
-        Response response = Response(clientSocket);
-
-        // Parse the raw HTTP request into a structured Request object
-        Request request = Request::parse(clientSocket);
-        if (request.rejected)
-        {
-            response.status(413).text(request.error).send();
-            struct linger sl = {1, 0};
-            setsockopt(clientSocket, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl));
-            return;
-        }
-
-        // Search for matching middlewares
-        const std::vector<RequestHandler> middlewares = _middlewares.resolve(request.path, request, true);
-        Serial.printf("Middlewares resolved for %s: %d\n", request.path.c_str(), middlewares.size());
-        for (const RequestHandler &handler : middlewares)
-        {
-            handler(request, response);
-            if (response.isFinalized())
-            {
-                Serial.printf("Middleware finalized response for %s\n", request.path.c_str());
-                response.send();
-                return;
-            }
-        }
-
-        // Search for matching route
-        std::string routeKey;
-        routeKey.reserve(request.method.size() + request.path.size());
-        routeKey = request.method;
-        routeKey += request.path;
-
-        const std::vector<RequestHandler> routes = _routes.resolve(routeKey, request, false);
-        if (routes.size() == 0)
-        {
-            response.NotFound().send();
-            Serial.printf("No handler found for route: %s\n", routeKey.c_str());
-            return;
-        }
-
-        for (const RequestHandler &handler : routes)
-        {
-            handler(request, response);
-            if (response.isFinalized())
-            {
-                Serial.printf("route finalized response for %s\n", request.path.c_str());
-                response.send();
-                return;
-            }
-        }
-
-        response.send();
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Handle Middleware
-     *
-     **/
-
-    void MiniServer::use(const std::string &prefix, const RequestHandler &handler)
-    {
-        if (prefix[0] != '/')
-        {
-            _middlewares.add('/' + prefix, {handler});
-        }
-        else
-        {
-            _middlewares.add(prefix, {handler});
-        }
-    }
-    void MiniServer::use(const RequestHandler &handler)
-    {
-        use("/", handler);
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Implement Routes
-     *
-     **/
-
-    void MiniServer::addRoute(const std::string &method, const std::string &path, const std::vector<RequestHandler> &handlers)
-    {
-        if (path[0] != '/')
-        {
-            _routes.add(method + "/" + path, handlers);
-        }
-        else
-        {
-            _routes.add(method + path, handlers);
-        }
-    }
-    void MiniServer::addRoute(const std::string &method, const std::string &path, const RequestHandler &handler)
-    {
-        const std::vector<RequestHandler> wrapper = {handler};
-        addRoute(method, path, wrapper);
-    }
-
-    void MiniServer::registerRouter(const EspWeb::Router &router)
-    {
-        for (const auto &route : router.routes)
-        {
-            Serial.printf("Registering route: %s %s\n", route.method.c_str(), route.path.c_str());
-            addRoute(route.method, route.path, route.handler);
-        }
-
-        for (const auto &entry : router.middlewares)
-        {
-            Serial.printf("Registering Middelware for Prefix: %s\n", entry.first.c_str());
-            for (const RequestHandler &handler : entry.second)
-            {
-                use(entry.first, handler);
-            }
-        }
-    }
-
-    void MiniServer::route(const std::string &method, const std::string &path, const RequestHandler &handler)
-    {
-        addRoute(method, path, handler);
-    }
-
-    void MiniServer::get(const std::string &path, const RequestHandler &handler)
-    {
-        addRoute("GET", path, handler);
-    }
-
-    void MiniServer::post(const std::string &path, const RequestHandler &handler)
-    {
-        addRoute("POST", path, handler);
-    }
-
-    void MiniServer::put(const std::string &path, const RequestHandler &handler)
-    {
-        addRoute("PUT", path, handler);
-    }
-
-    void MiniServer::patch(const std::string &path, const RequestHandler &handler)
-    {
-        addRoute("PATCH", path, handler);
-    }
-
-    void MiniServer::del(const std::string &path, const RequestHandler &handler)
-    {
-        addRoute("DELETE", path, handler);
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Serve and handle files:
-     *
-     **/
+    // ===========================================================================
+    // ============================   STATIC FILES   =============================
+    // ===========================================================================
+    //
+    //   staticFile   One GET route that serves one file.
+    //   root         One static file route per file of a folder, recursively.
+    //   index        The index file under "/", "/index" and "/index.html".
+    //
 
     void MiniServer::staticFile(const std::string &path, const std::string &filePath)
     {
-        Serial.printf("Adding file response: %s -> %s\n", path.c_str(), filePath.c_str());
+        ESPWEB_LOG_DEBUG("MiniServer", "Adding file response: %s -> %s", path.c_str(), filePath.c_str());
 
-        std::string normalizedPath = filePath;
-        if (normalizedPath[0] != '/')
-        {
-            normalizedPath = '/' + normalizedPath;
-        }
-
-        const RequestHandler &handler = [normalizedPath](const EspWeb::Request &req, EspWeb::Response &res)
-        {
-            res.file(normalizedPath);
-        };
-
-        addRoute("GET", path, handler);
+        const std::string normalizedPath = normalizePath(filePath);
+        addRoute("GET", path,
+                 [normalizedPath](Request &req, Response &res)
+                 {
+                     res.file(normalizedPath);
+                 });
     }
 
+    // "/web" with "/web/css/main.css" => GET "/css/main.css"
     void MiniServer::root(const std::string &folderPath, const std::string &prefix)
     {
         _isRootSet = true;
         FOLDER_WEB = folderPath;
-        std::vector<FileInfo> files = fileHandler.listFiles(folderPath);
-        for (FileInfo info : files)
+
+        for (const FileInfo &info : fileHandler.listFiles(folderPath))
         {
             if (info.isDirectory)
             {
@@ -278,43 +227,97 @@ namespace EspWeb
         staticFile("/index.html", indexPath);
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Handle multiple connections and cleanup:
-     *
-     **/
-    void MiniServer::workerTask(void *param)
+    // ===========================================================================
+    // ===============================   ROUTING   ===============================
+    // ===========================================================================
+    //
+    //   addRoute         Stores a handler chain under "METHOD/path".
+    //   registerRouter   Adds every route and middleware of a router.
+    //   route            Shortcut with an explicit method.
+    //   get ... del      Shortcuts per HTTP method.
+    //
+
+    // "GET" + "users/:id" => "GET/users/:id"
+    void MiniServer::addRoute(const std::string &method, const std::string &path,
+                              const std::vector<RequestHandler> &handlers)
     {
+        _routes.add(method + normalizePath(path), handlers);
+    }
 
-        MiniServer *server = static_cast<MiniServer *>(param);
-        int clientSocket;
+    void MiniServer::addRoute(const std::string &method, const std::string &path, const RequestHandler &handler)
+    {
+        addRoute(method, path, std::vector<RequestHandler>{handler});
+    }
 
-        while (true)
+    void MiniServer::registerRouter(const EspWeb::Router &router)
+    {
+        for (const auto &route : router.routes)
         {
-            // Hier wartet der Task, verbraucht 0% CPU währenddessen
-            if (xQueueReceive(server->_handleQueue, &clientSocket, portMAX_DELAY))
+            ESPWEB_LOG_DEBUG("MiniServer", "Registering route: %s %s", route.method.c_str(), route.path.c_str());
+            addRoute(route.method, route.path, route.handler);
+        }
+
+        for (const auto &entry : router.middlewares)
+        {
+            ESPWEB_LOG_DEBUG("MiniServer", "Registering middleware for prefix: %s", entry.first.c_str());
+            for (const RequestHandler &handler : entry.second)
             {
-                // --- TIMEOUT SETUP START ---
-                struct timeval tv;
-                tv.tv_sec = CONNECTION_TIMEOUT_SEC;
-                tv.tv_usec = 0;
-
-                setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-                setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-                // --- TIMEOUT SETUP END ---
-                Serial.println("--------------------------------------------------------------------");
-                Serial.printf("Worker handling client on socket %d\n", clientSocket);
-
-                server->handleClient(clientSocket);
-
-                Serial.printf("Worker finished handling client on socket %d\n", clientSocket);
-                Serial.println("--------------------------------------------------------------------");
-                shutdown(clientSocket, SHUT_RDWR);
-                close(clientSocket);
+                use(entry.first, handler);
             }
         }
     }
+
+    void MiniServer::route(const std::string &method, const std::string &path, const RequestHandler &handler)
+    {
+        addRoute(method, path, handler);
+    }
+
+    void MiniServer::get(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("GET", path, handler);
+    }
+    void MiniServer::post(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("POST", path, handler);
+    }
+    void MiniServer::put(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("PUT", path, handler);
+    }
+    void MiniServer::patch(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("PATCH", path, handler);
+    }
+    void MiniServer::del(const std::string &path, const RequestHandler &handler)
+    {
+        addRoute("DELETE", path, handler);
+    }
+
+    // ===========================================================================
+    // =============================   MIDDLEWARE   ==============================
+    // ===========================================================================
+    //
+    //   use   Adds a middleware for a prefix, or for every request.
+    //
+
+    void MiniServer::use(const std::string &prefix, const RequestHandler &handler)
+    {
+        _middlewares.add(normalizePath(prefix), {handler});
+    }
+
+    void MiniServer::use(const RequestHandler &handler)
+    {
+        use("/", handler);
+    }
+
+    // ===========================================================================
+    // ==========================   REQUEST HANDLING   ===========================
+    // ===========================================================================
+    //
+    //   acceptClientTask   Accepts clients and queues them, 503 when the queue is full.
+    //   workerTask         Takes a client from the queue, handles and closes it.
+    //   handleClient       Parse, middlewares, route, send.
+    //
 
     void MiniServer::acceptClientTask(void *param)
     {
@@ -326,43 +329,134 @@ namespace EspWeb
             struct sockaddr_in clientAddr;
             socklen_t len = sizeof(clientAddr);
 
-            int clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, &len);
-
+            const int clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, &len);
             if (clientSocket < 0)
             {
-                Serial.println("Failed to accept client connection");
-                return;
+                // A FreeRTOS task must never return, so a failed accept() is retried.
+                ESPWEB_LOG_WARN("MiniServer", "Failed to accept client connection (errno %d)", errno);
+                vTaskDelay(pdMS_TO_TICKS(ACCEPT_RETRY_DELAY_MS));
+                continue;
             }
 
-            Serial.printf("Accepted new client on socket %d\n", clientSocket);
+            ESPWEB_LOG_DEBUG("MiniServer", "Accepted new client on socket %d", clientSocket);
 
             if (xQueueSend(server->_handleQueue, &clientSocket, 0) != pdTRUE)
             {
-                Serial.println("Queue full! Rejecting new client.");
-                write(clientSocket, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 19\r\n\r\nService Unavailable", 75);
+                ESPWEB_LOG_WARN("MiniServer", "Queue full, rejecting client on socket %d", clientSocket);
+                write(clientSocket, RESPONSE_UNAVAILABLE, sizeof(RESPONSE_UNAVAILABLE) - 1);
                 close(clientSocket);
             }
         }
     }
 
+    void MiniServer::workerTask(void *param)
+    {
+        MiniServer *server = static_cast<MiniServer *>(param);
+        int clientSocket;
+
+        while (true)
+        {
+            // Blocks without CPU usage until a client is queued.
+            if (!xQueueReceive(server->_handleQueue, &clientSocket, portMAX_DELAY))
+            {
+                continue;
+            }
+
+            struct timeval tv;
+            tv.tv_sec = CONNECTION_TIMEOUT_SEC;
+            tv.tv_usec = 0;
+            setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+            ESPWEB_LOG_DEBUG("MiniServer", "Worker handling client on socket %d", clientSocket);
+            server->handleClient(clientSocket);
+            ESPWEB_LOG_DEBUG("MiniServer", "Worker finished client on socket %d", clientSocket);
+
+            shutdown(clientSocket, SHUT_RDWR);
+            close(clientSocket);
+        }
+    }
+
+    /*
+        > When the request was rejected while parsing
+            - Answer 413 and reset the connection, the unread body is dropped.
+        > Otherwise
+            - Run the middlewares of every matching prefix, stop if one finalizes.
+            - Answer 404 when no route matches "METHOD/path".
+            - Run the route handlers, stop if one finalizes.
+            - Send the response.
+    */
+    void MiniServer::handleClient(int clientSocket)
+    {
+        Response response = Response(clientSocket);
+        Request request = Request::parse(clientSocket);
+
+        // When the request was rejected while parsing
+        if (request.rejected)
+        {
+            response.status(413).text(request.error).send();
+            struct linger sl = {1, 0};
+            setsockopt(clientSocket, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl));
+            return;
+        }
+
+        // Middlewares
+        const std::vector<RequestHandler> middlewares = _middlewares.resolve(request.path, request, true);
+        ESPWEB_LOG_DEBUG("MiniServer", "Middlewares resolved for %s: %u", request.path.c_str(),
+                         (unsigned)middlewares.size());
+        if (runHandlers(middlewares, request, response))
+        {
+            ESPWEB_LOG_DEBUG("MiniServer", "Middleware finalized response for %s", request.path.c_str());
+            response.send();
+            return;
+        }
+
+        // Route
+        const std::string routeKey = request.method + request.path;
+        const std::vector<RequestHandler> routes = _routes.resolve(routeKey, request, false);
+        if (routes.empty())
+        {
+            ESPWEB_LOG_DEBUG("MiniServer", "No handler found for route: %s", routeKey.c_str());
+            response.NotFound().send();
+            return;
+        }
+
+        runHandlers(routes, request, response);
+        response.send();
+    }
+
+    // ===========================================================================
+    // ============================   START SERVER   =============================
+    // ===========================================================================
+    //
+    //   1. Defaults   Admin routes, the default website and WiFi.
+    //   2. Socket     Creates, binds and listens on the server socket.
+    //   3. mDNS       Registers the name, again after every reconnect.
+    //   4. Tasks      Starts the workers, the accept task and the WiFi manager.
+    //
+
     int MiniServer::start(int port, const std::string &ipAddr, int workerCount)
     {
-
         if (_isRunning)
         {
-            Serial.println("Server is already running");
+            ESPWEB_LOG_WARN("MiniServer", "Server is already running");
             return 0;
         }
 
+        // ---------------------------------------------------------------------------
+        // Defaults
+        //   Admin routes, the default website and WiFi.
+        // ---------------------------------------------------------------------------
+
         if (_isAdminEnabled)
         {
-            this->registerRouter(EspWeb::AdminRouter(_isDashboardEnabled));
+            registerRouter(AdminRouter(_isDashboardEnabled));
         }
 
         if (!_isRootSet && !_isIndexSet)
         {
-            this->root(FOLDER_WEB);
-            this->index(FOLDER_WEB + "/" + "index.html");
+            root(FOLDER_WEB);
+            index(FOLDER_WEB + "/index.html");
         }
 
         if (!WiFiUtility::instance().isNetworkReady())
@@ -370,78 +464,95 @@ namespace EspWeb
             WiFiUtility::instance().setup();
         }
 
+        // ---------------------------------------------------------------------------
+        // Socket
+        //   Creates, binds and listens on the server socket.
+        // ---------------------------------------------------------------------------
+
         memset(&_address, 0, sizeof(_address));
         _address.sin_family = AF_INET;
         _address.sin_port = htons(port);
         _addressLen = sizeof(_address);
         if (inet_pton(AF_INET, ipAddr.c_str(), &_address.sin_addr) <= 0)
         {
-            Serial.println("Invalid IP address");
+            ESPWEB_LOG_ERROR("MiniServer", "Invalid IP address %s", ipAddr.c_str());
             return 1;
         }
 
         _serverSocket = socket(AF_INET, SOCK_STREAM, 0);
         if (_serverSocket < 0)
         {
-            Serial.println("Failed to create socket");
+            ESPWEB_LOG_ERROR("MiniServer", "Failed to create socket");
             return 1;
         }
 
         int opt = 1;
         if (setsockopt(_serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
         {
-            Serial.println("Failed to set socket options");
+            ESPWEB_LOG_ERROR("MiniServer", "Failed to set socket options");
             return 1;
         }
 
         if (bind(_serverSocket, (struct sockaddr *)&_address, sizeof(_address)) < 0)
         {
-            Serial.println("Failed to bind socket");
+            ESPWEB_LOG_ERROR("MiniServer", "Failed to bind socket to %s:%d", ipAddr.c_str(), port);
             return 1;
         }
 
         if (listen(_serverSocket, CONNECTION_LIMIT) < 0)
         {
-            Serial.println("Failed to listen on socket");
+            ESPWEB_LOG_ERROR("MiniServer", "Failed to listen on socket");
             return 1;
         }
 
+        // ---------------------------------------------------------------------------
+        // mDNS
+        //   Registers the name, again after every reconnect.
+        // ---------------------------------------------------------------------------
+
         if (!_dnsName.empty())
         {
-            if (!MDNS.begin(_dnsName.c_str()))
+            if (MDNS.begin(_dnsName.c_str()))
             {
-                Serial.println("mDNS failed to start!");
+                MDNS.addService("http", "tcp", port);
+                ESPWEB_LOG_INFO("MiniServer", "mDNS started: http://%s.local", _dnsName.c_str());
             }
             else
             {
-                MDNS.addService("http", "tcp", port);
-                Serial.printf("mDNS started: http://%s.local\n", _dnsName.c_str());
+                ESPWEB_LOG_WARN("MiniServer", "mDNS failed to start");
             }
 
-            WiFi.onEvent([this, port](WiFiEvent_t event, WiFiEventInfo_t info)
-                         {
-                MDNS.end();
-                if (MDNS.begin(_dnsName.c_str()))
-                    MDNS.addService("http", "tcp", port); },
-                         ARDUINO_EVENT_WIFI_STA_GOT_IP);
+            // A new IP needs a new mDNS announcement.
+            WiFi.onEvent(
+                [this, port](WiFiEvent_t event, WiFiEventInfo_t info)
+                {
+                    MDNS.end();
+                    if (MDNS.begin(_dnsName.c_str()))
+                    {
+                        MDNS.addService("http", "tcp", port);
+                    }
+                },
+                ARDUINO_EVENT_WIFI_STA_GOT_IP);
         }
 
-        Serial.println("Starting worker tasks...");
+        // ---------------------------------------------------------------------------
+        // Tasks
+        //   Starts the workers, the accept task and the WiFi manager.
+        // ---------------------------------------------------------------------------
+
+        // Workers alternate between both cores, the name is copied by FreeRTOS.
         for (int i = 0; i < workerCount; i++)
         {
-            std::string taskName = "worker" + std::to_string(i);
-            xTaskCreatePinnedToCore(workerTask, taskName.c_str(), 8192, this, 1, NULL, i % 2);
+            const std::string taskName = "worker" + std::to_string(i);
+            xTaskCreatePinnedToCore(workerTask, taskName.c_str(), TASK_STACK_WORKER, this, TASK_PRIORITY_WORKER,
+                                    nullptr, i % 2);
         }
 
-        Serial.println("Starting accept client task...");
-        xTaskCreatePinnedToCore(acceptClientTask, "accept", 8192, this, 2, NULL, 0);
+        xTaskCreatePinnedToCore(acceptClientTask, "accept", TASK_STACK_ACCEPT, this, TASK_PRIORITY_ACCEPT, nullptr, 0);
+        xTaskCreate(WiFiUtility::wifiManagerTask, "WiFiManager", TASK_STACK_WIFI, nullptr, TASK_PRIORITY_WIFI, nullptr);
 
-        Serial.println("Starting WiFi manager task");
-        xTaskCreate(WiFiUtility::wifiManagerTask, "WiFiManager", 4096, nullptr, 1, nullptr);
-
-        Serial.println("Server started and listening for clients...");
+        ESPWEB_LOG_INFO("MiniServer", "Listening on %s:%d with %d workers", ipAddr.c_str(), port, workerCount);
         _isRunning = true;
         return 0;
     }
-
 }

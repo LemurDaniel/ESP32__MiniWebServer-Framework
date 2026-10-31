@@ -1,0 +1,13 @@
+# Formatter settings for lib/server and src.
+#   Allman braces, 4 spaces, namespace content indented like the existing code.
+#   Includes are not sorted, their order is grouped by hand (framework, stdlib, libraries, own).
+BasedOnStyle: LLVM
+IndentWidth: 4
+BreakBeforeBraces: Allman
+AccessModifierOffset: -4
+ColumnLimit: 120
+NamespaceIndentation: All
+SortIncludes: Never
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: Empty
+FixNamespaceComments: false

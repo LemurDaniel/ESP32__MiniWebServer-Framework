@@ -2,23 +2,81 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Implementation of utility.admin.h.
+//   The login and dashboard pages are embedded as raw strings in PAGES.
+
+//
+//   Chapters:
+//     HELPERS        Restart task, network JSON and the shared settings.
+//     PAGES          Custom links, login page and dashboard page.
+//     MIDDLEWARE     auth_handler.
+//     CREDENTIALS    Login, logout, credential update and restart.
+//     API TOKENS     List, create and delete permanent tokens.
+//     WIFI           Active, scanned and saved networks.
+//     UPDATES        Firmware, website upload and website reset.
+//
+
 #include <utils/utility.admin.h>
+#include <utils/utility.log.h>
 
 namespace EspWeb
 {
+    // ===========================================================================
+    // ===============================   HELPERS   ===============================
+    // ===========================================================================
+    //
+    //   CUSTOM_LINKS        Links shown in the dashboard navigation.
+    //   restartTask         Restarts after a delay, so the response still goes out.
+    //   networksToJson      { "networks": [ { SSID, SignalStrength, IPAddress } ] }
+    //
 
     std::map<std::string, std::string> CUSTOM_LINKS = {};
 
-    static void restartTask(void *param)
+    namespace
     {
-        vTaskDelay(pdMS_TO_TICKS(500));
-        ESP.restart();
-        vTaskDelete(nullptr);
+        /** @brief Lifetime of an admin session token in seconds. */
+        constexpr long ADMIN_SESSION_SECONDS = 3600;
+
+        /** @brief Delay before the restart, so the pending response reaches the client. */
+        constexpr uint32_t RESTART_DELAY_MS = 500;
+
+        /** @brief Buffer size for streaming a firmware upload into flash. */
+        constexpr size_t OTA_CHUNK_SIZE = 1024;
+
+        void restartTask(void *param)
+        {
+            vTaskDelay(pdMS_TO_TICKS(RESTART_DELAY_MS));
+            ESP.restart();
+            vTaskDelete(nullptr);
+        }
+
+        JsonDocument networksToJson(const std::vector<WiFiConfig> &networks)
+        {
+            JsonDocument doc;
+            JsonArray arr = doc["networks"].to<JsonArray>();
+            for (const WiFiConfig &network : networks)
+            {
+                JsonObject obj = arr.add<JsonObject>();
+                obj["SSID"] = network.ssid;
+                obj["SignalStrength"] = network.signalStrength;
+                obj["IPAddress"] = network.ipAddress;
+            }
+            return doc;
+        }
     }
+
+    // ===========================================================================
+    // ================================   PAGES   ================================
+    // ===========================================================================
+    //
+    //   get_AdminLinks       Custom links as JSON array.
+    //   get_AdminLogin       Login page.
+    //   get_AdminDashboard   Dashboard page.
+    //
 
     void get_AdminLinks(Request &req, Response &res)
     {
-
         JsonDocument doc;
         JsonArray array = doc.to<JsonArray>();
         for (const auto &entry : CUSTOM_LINKS)
@@ -30,12 +88,6 @@ namespace EspWeb
 
         res.OK().json(doc);
     }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Admin Pages
-     *
-     **/
 
     void get_AdminLogin(Request &req, Response &res)
     {
@@ -1047,38 +1099,61 @@ namespace EspWeb
         res.html(dashboardPage);
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Authentication helpers
-     *
-     **/
+    // ===========================================================================
+    // =============================   MIDDLEWARE   ==============================
+    // ===========================================================================
+    //
+    //   auth_handler   Protects every /admin and /upload route except login.
+    //
 
+    /*
+        > When the login page is requested with a valid admin token
+            - Redirect to the dashboard.
+        > When the login page or the login endpoint is requested
+            - Let it through without a token.
+        > Otherwise
+            - Redirect to the login page without a valid admin token.
+            - Preset an "Authenticated" body with a valid one, the route handler overwrites it.
+    */
     void auth_handler(Request &req, Response &res)
     {
-        // redirect to dashboard
-        if (req.path == "/admin" && req.token.isAllowed("admin"))
+        const bool isAdmin = req.token.isAllowed("admin");
+
+        // When the login page is requested with a valid admin token
+        if (req.path == "/admin" && isAdmin)
+        {
             res.Redirect("/admin/dashboard").finalize();
+        }
 
-        // Unprotected routes
+        // When the login page or the login endpoint is requested
         if (req.path == "/admin" || req.path == "/admin/login")
+        {
             return;
+        }
 
-        if (!req.token.isAllowed("admin"))
+        // Otherwise
+        if (!isAdmin)
+        {
             res.Redirect("/admin").finalize();
-        else
-            res.OK().text("Authenticated");
+            return;
+        }
+
+        res.OK().text("Authenticated");
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Request Handlers
-     *
-     **/
+    // ===========================================================================
+    // =============================   CREDENTIALS   =============================
+    // ===========================================================================
+    //
+    //   get_AdminLogout        Revokes the session token of the cookie.
+    //   post_AdminLogin        Checks the credentials and returns a session token.
+    //   post_AdminUpdateAuth   Stores new credentials.
+    //   post_AdminRestart      Answers, then restarts the device.
+    //
 
     void get_AdminLogout(Request &req, Response &res)
     {
-        const auto &entry = req.cookies.find(DEFAULT_ADMIN_COOKIE);
-
+        const auto entry = req.cookies.find(DEFAULT_ADMIN_COOKIE);
         if (entry != req.cookies.end())
         {
             TokenManager::instance().removeSessionToken(entry->second);
@@ -1090,40 +1165,38 @@ namespace EspWeb
     void post_AdminLogin(Request &req, Response &res)
     {
         const JsonDocument &body = req.body.json();
-
         if (!body["username"].is<std::string>() || !body["password"].is<std::string>())
         {
-            Serial.println("Missing username or password in login request");
+            ESPWEB_LOG_WARN("Admin", "Missing username or password in login request");
             res.BadRequest().text("Invalid username or password");
             return;
         }
 
-        std::string username = body["username"].as<std::string>();
-        std::string password = body["password"].as<std::string>();
-
+        const std::string username = body["username"].as<std::string>();
+        const std::string password = body["password"].as<std::string>();
         if (!TokenManager::instance().checkCredentials(username, password))
         {
+            ESPWEB_LOG_WARN("Admin", "Failed login for user %s", username.c_str());
             res.Unauthorized().text("Invalid username or password");
             return;
         }
 
         JsonDocument doc;
-        doc["token"] = TokenManager::instance().getSessionToken(3600, {"admin"}).value;
-
+        doc["token"] = TokenManager::instance().getSessionToken(ADMIN_SESSION_SECONDS, {"admin"}).value;
         res.json(doc);
     }
 
     void post_AdminUpdateAuth(Request &req, Response &res)
     {
-        if (!req.body.json()["admin_user"].is<std::string>() || !req.body.json()["admin_pwd"].is<std::string>())
+        const JsonDocument &body = req.body.json();
+        if (!body["admin_user"].is<std::string>() || !body["admin_pwd"].is<std::string>())
         {
             res.BadRequest().text("Missing admin_user or admin_pwd");
             return;
         }
 
-        std::string newAdminUser = req.body.json()["admin_user"].as<std::string>();
-        std::string newAdminPwd = req.body.json()["admin_pwd"].as<std::string>();
-
+        const std::string newAdminUser = body["admin_user"].as<std::string>();
+        const std::string newAdminPwd = body["admin_pwd"].as<std::string>();
         TokenManager::instance().setCredentials(newAdminUser, newAdminPwd);
 
         res.OK().text("Admin credentials updated");
@@ -1131,23 +1204,26 @@ namespace EspWeb
 
     void post_AdminRestart(Request &req, Response &res)
     {
+        ESPWEB_LOG_INFO("Admin", "Restart requested");
         res.OK().text("Restarting...");
         xTaskCreate(restartTask, "restart", 4096, nullptr, 1, nullptr);
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Permanent Token Handlers
-     *
-     **/
+    // ===========================================================================
+    // =============================   API TOKENS   ==============================
+    // ===========================================================================
+    //
+    //   get_PermTokens     Names of every stored API token.
+    //   get_TokenActions   Actions that can be granted.
+    //   post_PermToken     Creates a token and returns its value once.
+    //   delete_PermToken   Deletes a token by name.
+    //
 
     void get_PermTokens(Request &req, Response &res)
     {
-        const std::vector<Token> tokens = TokenManager::instance().listApiTokens();
-
         JsonDocument doc;
         JsonArray arr = doc["tokens"].to<JsonArray>();
-        for (const Token &token : tokens)
+        for (const Token &token : TokenManager::instance().listApiTokens())
         {
             arr.add(token.name);
         }
@@ -1160,7 +1236,9 @@ namespace EspWeb
         JsonDocument doc;
         JsonArray arr = doc["actions"].to<JsonArray>();
         for (const std::string &action : TOKEN_ACTIONS)
+        {
             arr.add(action);
+        }
 
         res.OK().json(doc);
     }
@@ -1168,7 +1246,6 @@ namespace EspWeb
     void post_PermToken(Request &req, Response &res)
     {
         JsonDocument &body = req.body.json();
-
         if (!body["name"].is<std::string>() || body["name"].as<std::string>().empty())
         {
             res.BadRequest().text("Missing name");
@@ -1179,121 +1256,106 @@ namespace EspWeb
 
         std::vector<std::string> actions;
         for (JsonVariant value : body["actions"].as<JsonArray>())
+        {
             actions.push_back(value.as<std::string>());
+        }
 
         const Token token = TokenManager::instance().getApiToken(name, actions);
 
         JsonDocument doc;
         doc["name"] = token.name;
         doc["token"] = token.value;
-
         res.OK().json(doc);
     }
 
     void delete_PermToken(Request &req, Response &res)
     {
-        if (!req.body.json()["name"].is<std::string>())
+        const JsonDocument &body = req.body.json();
+        if (!body["name"].is<std::string>())
         {
             res.BadRequest().text("Missing name");
             return;
         }
 
-        const std::string name = req.body.json()["name"].as<std::string>();
-        TokenManager::instance().removeApiToken(name);
+        TokenManager::instance().removeApiToken(body["name"].as<std::string>());
         res.OK().text("Token deleted");
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * WiFi Configuration Handlers
-     *
-     **/
+    // ===========================================================================
+    // ================================   WIFI   =================================
+    // ===========================================================================
+    //
+    //   get_WiFiActive            The connected network.
+    //   get_WiFiScan              Every visible network.
+    //   get_WiFiSavedNetworks     Every saved network.
+    //   delete_WiFiSavedNetwork   Removes a saved network.
+    //   post_WiFiSavedNetwork     Saves a network.
+    //
 
     void get_WiFiActive(Request &req, Response &res)
     {
-        Serial.println("Fetching current WiFi configuration for admin dashboard");
-        EspWeb::WiFiConfig wifiConfig = WiFiUtility::instance().getActiveWiFi();
+        const WiFiConfig wifiConfig = WiFiUtility::instance().getActiveWiFi();
 
         JsonDocument doc;
         doc["SSID"] = wifiConfig.ssid;
         doc["SignalStrength"] = wifiConfig.signalStrength;
         doc["IPAddress"] = wifiConfig.ipAddress;
         doc["Password"] = wifiConfig.password;
-
         res.OK().json(doc);
     }
 
     void get_WiFiScan(Request &req, Response &res)
     {
-        std::vector<EspWeb::WiFiConfig> options = WiFiUtility::instance().scanNetworks();
-
-        JsonDocument doc;
-        JsonArray arr = doc["networks"].to<JsonArray>();
-        for (const WiFiConfig &opt : options)
-        {
-            JsonObject obj = arr.add<JsonObject>();
-            obj["SSID"] = opt.ssid;
-            obj["SignalStrength"] = opt.signalStrength;
-            obj["IPAddress"] = opt.ipAddress;
-        }
-
-        res.OK().json(doc);
+        res.OK().json(networksToJson(WiFiUtility::instance().scanNetworks()));
     }
 
     void get_WiFiSavedNetworks(Request &req, Response &res)
     {
-        std::vector<EspWeb::WiFiConfig> options = WiFiUtility::instance().getSavedNetworks();
-
-        JsonDocument doc;
-        JsonArray arr = doc["networks"].to<JsonArray>();
-        for (const WiFiConfig &opt : options)
-        {
-            JsonObject obj = arr.add<JsonObject>();
-            obj["SSID"] = opt.ssid;
-            obj["SignalStrength"] = opt.signalStrength;
-            obj["IPAddress"] = opt.ipAddress;
-        }
-
-        res.OK().json(doc);
+        res.OK().json(networksToJson(WiFiUtility::instance().getSavedNetworks()));
     }
 
     void delete_WiFiSavedNetwork(Request &req, Response &res)
     {
-        if (req.body.json().isNull() || !req.body.json()["ssid"].is<std::string>())
+        const JsonDocument &body = req.body.json();
+        if (body.isNull() || !body["ssid"].is<std::string>())
         {
             res.BadRequest().text("Missing ssid");
             return;
         }
 
-        std::string ssid = req.body.json()["ssid"].as<std::string>();
-        WiFiUtility::instance().removeWiFiConfig(ssid);
+        WiFiUtility::instance().removeWiFiConfig(body["ssid"].as<std::string>());
         res.OK().text("Network removed");
     }
 
     void post_WiFiSavedNetwork(Request &req, Response &res)
     {
-        if (!req.body.json()["ssid"].is<std::string>() || !req.body.json()["password"].is<std::string>())
+        const JsonDocument &body = req.body.json();
+        if (!body["ssid"].is<std::string>() || !body["password"].is<std::string>())
         {
             res.BadRequest().text("Missing ssid or password");
             return;
         }
 
-        std::string ssid = req.body.json()["ssid"].as<std::string>();
-        std::string password = req.body.json()["password"].as<std::string>();
-
+        const std::string ssid = body["ssid"].as<std::string>();
+        const std::string password = body["password"].as<std::string>();
         WiFiUtility::instance().addWiFiConfig(ssid, password);
 
         res.OK().text("WiFi config updated");
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Update code and website
-     *
-     **/
+    // ===========================================================================
+    // ===============================   UPDATES   ===============================
+    // ===========================================================================
+    //
+    //   get_ClearWebsite   Deletes the web folder content.
+    //   post_UploadFile    Stores one uploaded file below the web folder.
+    //   post_UpdateCode    Flashes a firmware binary and restarts.
+    //
+
     void get_ClearWebsite(Request &req, Response &res)
     {
         fileHandler.clearFolder(FOLDER_WEB);
+        ESPWEB_LOG_INFO("Admin", "Cleared website folder %s", FOLDER_WEB.c_str());
         res.OK().text("OK");
     }
 
@@ -1306,35 +1368,46 @@ namespace EspWeb
             return;
         }
 
-        std::string fullPath = std::string(FOLDER_WEB) + "/" + path;
-        req.body.file(fullPath);
+        req.body.file(FOLDER_WEB + "/" + path);
         res.OK().text("OK");
     }
 
+    /*
+        > When the update cannot start (e.g. not enough flash)
+            - Answer 500.
+        > Otherwise
+            - Stream the body into the update partition.
+            - Restart when the image is complete, answer 500 when it is not.
+    */
     void post_UpdateCode(Request &req, Response &res)
     {
-        size_t updateSize = req.body.contentLength;
-
-        if (Update.begin(req.body.contentLength))
+        // When the update cannot start
+        if (!Update.begin(req.body.contentLength))
         {
-            uint8_t buff[1024];
-            int available = 0;
-            do
-            {
-                available = req.body.chunks(buff, sizeof(buff));
-                if (available > 0)
-                    Update.write(buff, available);
-
-            } while (available > 0);
-
-            if (Update.end() && Update.isFinished())
-            {
-                post_AdminRestart(req, res);
-            }
-            else
-            {
-                Serial.println(Update.getError());
-            }
+            ESPWEB_LOG_ERROR("Admin", "OTA update could not start: %s", Update.errorString());
+            res.InternalServerError().text(Update.errorString());
+            return;
         }
+
+        // Otherwise
+        ESPWEB_LOG_INFO("Admin", "OTA update started (%u bytes)", (unsigned)req.body.contentLength);
+
+        uint8_t buff[OTA_CHUNK_SIZE];
+        size_t available = req.body.chunks(buff, sizeof(buff));
+        while (available > 0)
+        {
+            Update.write(buff, available);
+            available = req.body.chunks(buff, sizeof(buff));
+        }
+
+        if (!Update.end() || !Update.isFinished())
+        {
+            ESPWEB_LOG_ERROR("Admin", "OTA update failed: %s", Update.errorString());
+            res.InternalServerError().text(Update.errorString());
+            return;
+        }
+
+        ESPWEB_LOG_INFO("Admin", "OTA update finished");
+        post_AdminRestart(req, res);
     }
 }

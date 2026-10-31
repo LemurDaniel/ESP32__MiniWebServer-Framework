@@ -2,21 +2,51 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Groups routes and middlewares into a unit that MiniServer::registerRouter() mounts.
+//
+//   class ApiRouter : public EspWeb::Router
+//   {
+//   public:
+//       ApiRouter()
+//       {
+//           use("/api", auth());
+//           route("GET", "/api/status", get_status);
+//       }
+//   };
+
+//
+//   Chapters:
+//     GROUP ROUTES   The RequestHandler signature and the Router class.
+//
+
 #pragma once
 
 #include <Arduino.h>
 
-#include <vector>
-#include <string>
+#include <functional>
 #include <map>
+#include <string>
+#include <vector>
 
 #include <router/request.h>
 #include <router/response.h>
-#include <utils/utility.token.h>
 #include <utils/utility.file.h>
+#include <utils/utility.token.h>
 
 namespace EspWeb
 {
+    // ===========================================================================
+    // ============================   GROUP ROUTES   =============================
+    // ===========================================================================
+    //
+    //   RequestHandler   Signature of every route handler and middleware.
+    //   Shared           The file handler available to every route.
+    //   Registration     Routes and middlewares of this router.
+    //   Middlewares      Factories for the built-in CORS and auth middlewares.
+    //   Tokens           Shortcuts into the TokenManager.
+    //
+
     /** @brief Function signature for all request handler and middleware functions. */
     using RequestHandler = std::function<void(Request &, Response &)>;
 
@@ -28,10 +58,13 @@ namespace EspWeb
      */
     class Router
     {
+        // Shared
     public:
         /** @brief Shared LittleFS file handler available to all route handlers. */
         static FileHandler fs;
 
+        // Registration
+    public:
         /**
          * @brief Describes a single registered route.
          */
@@ -78,47 +111,40 @@ namespace EspWeb
          */
         void use(const std::string &prefix, const RequestHandler &handler);
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * Middleware factories
-         *
-         **/
-
+        // Middlewares
+    public:
         /**
-         * @brief Creates a CORS middleware that sets the appropriate headers.
-         * @param origin Allowed origin value for the `Access-Control-Allow-Origin` header (default `"*"`).
-         * @return RequestHandler that sets CORS headers and responds to OPTIONS preflight requests.
+         * @brief Creates a CORS middleware that sets the `Access-Control-Allow-Origin` header.
+         * @param origin Allowed origin value (default `"*"`).
+         * @return RequestHandler that sets the CORS header.
          */
         static RequestHandler cors(const std::string &origin = "*");
 
         /**
          * @brief Creates a token authentication middleware.
-         * @return RequestHandler that validates session and API tokens from cookies/headers,
-         *         rejecting the request with 401 if no valid token is present.
+         * @return RequestHandler that rejects the request with 401 if no valid session
+         *         or API token is present.
          */
         static RequestHandler auth();
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * Token helpers
-         *
-         **/
-
+        // Tokens
+    public:
         /**
          * @brief Issues a time-limited session token.
          * @param seconds  Lifetime of the token in seconds.
          * @param actions  List of actions the token is permitted to perform (default: TOKEN_ACTIONS).
-         * @return Signed token string to be stored in a session cookie.
+         * @return Token string to be stored in a session cookie.
          */
         static std::string getSessionToken(long seconds, const std::vector<std::string> &actions = TOKEN_ACTIONS);
 
         /**
-         * @brief Creates or retrieves a named permanent API token.
+         * @brief Creates a named permanent API token, replacing an existing one with the same name.
          * @param name    Human-readable token name (used as its identifier).
          * @param actions List of actions the token is permitted to perform (default: TOKEN_ACTIONS).
          * @return Token value string.
          */
-        static std::string getApiToken(const std::string &name, const std::vector<std::string> &actions = TOKEN_ACTIONS);
+        static std::string getApiToken(const std::string &name,
+                                       const std::vector<std::string> &actions = TOKEN_ACTIONS);
 
         /**
          * @brief Permanently removes a named API token.
@@ -126,5 +152,4 @@ namespace EspWeb
          */
         static void removeApiToken(const std::string &name);
     };
-
 }

@@ -2,18 +2,39 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Implementation of utility.wifi.h.
+
+//
+//   Chapters:
+//     STATE            AP mode, connection and readiness checks.
+//     NETWORKS         Scanned, saved and nearby saved networks.
+//     SAVED NETWORKS   Add, remove and clear saved networks.
+//     CONNECTION       Active network, connect attempt, setup and the manager task.
+//
+
 #include <utils/utility.wifi.h>
+#include <utils/utility.log.h>
 
 namespace EspWeb
 {
-    void WiFiUtility::wifiManagerTask(void *param)
+    namespace
     {
-        while (true)
-        {
-            vTaskDelay(pdMS_TO_TICKS(30000));
-            WiFiUtility::instance().setup();
-        }
+        /** @brief Interval of the connection check in wifiManagerTask. */
+        constexpr uint32_t WIFI_CHECK_INTERVAL_MS = 30000;
+
+        /** @brief Poll interval while waiting for an association. */
+        constexpr uint32_t WIFI_CONNECT_POLL_MS = 500;
     }
+
+    // ===========================================================================
+    // ================================   STATE   ================================
+    // ===========================================================================
+    //
+    //   isApMode          Whether the device runs only as access point.
+    //   isWiFiConnected   Whether the device is associated with a network.
+    //   isNetworkReady    Whether clients can reach the device.
+    //
 
     int WiFiUtility::isApMode()
     {
@@ -30,24 +51,21 @@ namespace EspWeb
         return WiFi.isConnected() || WiFi.getMode() == WIFI_AP;
     }
 
-    void WiFiUtility::clearWiFiConfig()
-    {
-        fileHandler.removeFile(WIFI_CONFIG_FILE);
-        fileHandler.removeJsonConfig(WIFI_CONFIG_FILE);
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Handle Saved / Nearby Networks
-     *
-     **/
+    // ===========================================================================
+    // ==============================   NETWORKS   ===============================
+    // ===========================================================================
+    //
+    //   scanNetworks         Every visible network with its signal strength.
+    //   getSavedNetworks     Every saved network with its password.
+    //   getNearestNetworks   Saved networks in range, strongest first.
+    //
 
     std::vector<WiFiConfig> WiFiUtility::scanNetworks()
     {
         std::vector<WiFiConfig> ssids;
 
-        int n = WiFi.scanNetworks();
-        for (int i = 0; i < n; ++i)
+        const int count = WiFi.scanNetworks();
+        for (int i = 0; i < count; ++i)
         {
             WiFiConfig config;
             config.ssid = WiFi.SSID(i).c_str();
@@ -58,6 +76,7 @@ namespace EspWeb
         return ssids;
     }
 
+    // Store shape: { "networks": { "<ssid>": { "password": "<password>" } } }
     std::vector<WiFiConfig> WiFiUtility::getSavedNetworks()
     {
         std::vector<WiFiConfig> savedNetworks;
@@ -80,37 +99,49 @@ namespace EspWeb
         const std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
         std::vector<WiFiConfig> nearbyNetworks;
 
+        // Saved network + signal strength of the scan
         for (const WiFiConfig &scanned : scannedNetworks)
         {
-            for (const WiFiConfig &saved : savedNetworks)
+            const auto saved = std::find_if(savedNetworks.begin(), savedNetworks.end(),
+                                            [&scanned](const WiFiConfig &config)
+                                            {
+                                                return config.ssid == scanned.ssid;
+                                            });
+            if (saved == savedNetworks.end())
             {
-                if (scanned.ssid != saved.ssid)
-                    continue;
-
-                WiFiConfig match = saved;
-                match.signalStrength = scanned.signalStrength;
-                nearbyNetworks.push_back(match);
-                break;
+                continue;
             }
+
+            WiFiConfig match = *saved;
+            match.signalStrength = scanned.signalStrength;
+            nearbyNetworks.push_back(match);
         }
 
-        std::sort(nearbyNetworks.begin(), nearbyNetworks.end(), [](const WiFiConfig &a, const WiFiConfig &b)
-                  { return a.signalStrength > b.signalStrength; });
+        std::sort(nearbyNetworks.begin(), nearbyNetworks.end(),
+                  [](const WiFiConfig &a, const WiFiConfig &b)
+                  {
+                      return a.signalStrength > b.signalStrength;
+                  });
 
         return nearbyNetworks;
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Add Remove Connect
-     *
-     **/
+    // ===========================================================================
+    // ===========================   SAVED NETWORKS   ============================
+    // ===========================================================================
+    //
+    //   addWiFiConfig      Saves or updates a network.
+    //   removeWiFiConfig   Removes a network.
+    //   clearWiFiConfig    Removes every network, also the legacy LittleFS file.
+    //
+
     void WiFiUtility::addWiFiConfig(const std::string &ssid, const std::string &password)
     {
         JsonDocument doc = fileHandler.readJsonConfig(WIFI_CONFIG_FILE);
         doc["networks"][ssid]["password"] = password;
-
         fileHandler.writeJsonConfig(WIFI_CONFIG_FILE, doc);
+
+        ESPWEB_LOG_INFO("WiFiUtility", "Saved network %s", ssid.c_str());
     }
 
     void WiFiUtility::removeWiFiConfig(const std::string &ssid)
@@ -118,11 +149,30 @@ namespace EspWeb
         JsonDocument doc = fileHandler.readJsonConfig(WIFI_CONFIG_FILE);
         doc["networks"].as<JsonObject>().remove(ssid.c_str());
         fileHandler.writeJsonConfig(WIFI_CONFIG_FILE, doc);
+
+        ESPWEB_LOG_INFO("WiFiUtility", "Removed network %s", ssid.c_str());
     }
+
+    void WiFiUtility::clearWiFiConfig()
+    {
+        fileHandler.removeFile(WIFI_CONFIG_FILE);
+        fileHandler.removeJsonConfig(WIFI_CONFIG_FILE);
+
+        ESPWEB_LOG_INFO("WiFiUtility", "Cleared all saved networks");
+    }
+
+    // ===========================================================================
+    // =============================   CONNECTION   ==============================
+    // ===========================================================================
+    //
+    //   getActiveWiFi     The connected network with its saved password.
+    //   attemptConnect    Connects to one network within the timeout.
+    //   setup             Connects to a saved network or falls back to AP mode.
+    //   wifiManagerTask   Calls setup periodically.
+    //
 
     WiFiConfig WiFiUtility::getActiveWiFi()
     {
-
         WiFiConfig activeWiFi;
         if (!isNetworkReady())
         {
@@ -133,12 +183,12 @@ namespace EspWeb
         activeWiFi.signalStrength = WiFi.RSSI();
         activeWiFi.ipAddress = WiFi.localIP().toString().c_str();
 
-        std::vector<WiFiConfig> savedNetworks = getSavedNetworks();
-        for (const WiFiConfig &config : savedNetworks)
+        for (const WiFiConfig &config : getSavedNetworks())
         {
-            if (config.ssid != activeWiFi.ssid)
-                continue;
-            activeWiFi.password = config.password;
+            if (config.ssid == activeWiFi.ssid)
+            {
+                activeWiFi.password = config.password;
+            }
         }
 
         return activeWiFi;
@@ -146,7 +196,7 @@ namespace EspWeb
 
     bool WiFiUtility::attemptConnect(WiFiConfig network)
     {
-        Serial.printf("Connecting to: %s (%d dBm)\n", network.ssid.c_str(), network.signalStrength);
+        ESPWEB_LOG_INFO("WiFiUtility", "Connecting to %s (%d dBm)", network.ssid.c_str(), network.signalStrength);
 
         // Keep an already-running AP alive while attempting to reconnect, so clients
         // currently on the AP (e.g. configuring WiFi via the admin page) aren't dropped.
@@ -156,56 +206,47 @@ namespace EspWeb
         const int timeStart = millis() / 1000;
         while (!WiFi.isConnected())
         {
-            vTaskDelay(pdMS_TO_TICKS(500));
-            Serial.print(".");
+            vTaskDelay(pdMS_TO_TICKS(WIFI_CONNECT_POLL_MS));
 
             if ((int)(millis() / 1000) - timeStart >= _WIFI_TIMEOUT_SEC)
             {
-                Serial.println("\nConnection timed out.");
+                ESPWEB_LOG_WARN("WiFiUtility", "Connection to %s timed out", network.ssid.c_str());
                 WiFi.disconnect();
                 return false;
             }
         }
 
-        Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
+        ESPWEB_LOG_INFO("WiFiUtility", "Connected, IP: %s", WiFi.localIP().toString().c_str());
         return true;
     }
 
-    /*-------------------------------------------------------------------------------------------------
-
-        Setup Wifi
-
-
-        Continually checks every 30 seconds if the device is connected to a WiFi.
-        If it is NOT, then attempts its connection routine:
-
-        -> Find the nearest Saved network and connect to it
-        -> On Failure try the next network
-
-        -> Fallback to AP-Mode if
-            -> No Connection could be made
-            -> No saved network is nearby
-
-
+    /*
+        > When connected
+            - Do nothing.
+        > When in AP mode and no saved network is in range
+            - Leave the AP untouched, restarting it would drop its clients.
+        > Otherwise
+            - Try every saved network in range, strongest first, stop on the first success.
+            - If all fail and the AP was running, keep it (it stayed alive via WIFI_AP_STA).
+            - If all fail and no AP was running, start the AP.
     */
     void WiFiUtility::setup()
     {
+        // When connected
         if (isWiFiConnected())
         {
             return;
         }
 
-        bool wasApMode = isApMode();
-
-        std::vector<WiFiConfig> nearby = getNearestNetworks();
-
-        // Already serving AP clients and no new candidate network to try - leave the
-        // AP running untouched instead of restarting it (which would drop connected clients).
+        // When in AP mode and no saved network is in range
+        const bool wasApMode = isApMode();
+        const std::vector<WiFiConfig> nearby = getNearestNetworks();
         if (wasApMode && nearby.empty())
         {
             return;
         }
 
+        // Otherwise
         for (const WiFiConfig &network : nearby)
         {
             if (attemptConnect(network))
@@ -216,16 +257,22 @@ namespace EspWeb
 
         if (wasApMode)
         {
-            // AP was kept alive via WIFI_AP_STA during the attempts above, so it's
-            // still running - no need to restart it.
-            Serial.println("No Connection could be made, staying in AP mode...");
+            ESPWEB_LOG_INFO("WiFiUtility", "No connection could be made, staying in AP mode");
             return;
         }
 
-        Serial.println("No saved networks in range, starting AP mode...");
+        ESPWEB_LOG_INFO("WiFiUtility", "No saved networks in range, starting AP mode");
         WiFi.mode(WIFI_AP);
         WiFi.softAP(DEFAULT_WIFI_SSID);
-        Serial.printf("AP IP: %s\n", WiFi.softAPIP().toString().c_str());
+        ESPWEB_LOG_INFO("WiFiUtility", "AP %s started, IP: %s", DEFAULT_WIFI_SSID, WiFi.softAPIP().toString().c_str());
     }
 
+    void WiFiUtility::wifiManagerTask(void *param)
+    {
+        while (true)
+        {
+            vTaskDelay(pdMS_TO_TICKS(WIFI_CHECK_INTERVAL_MS));
+            WiFiUtility::instance().setup();
+        }
+    }
 }

@@ -2,19 +2,44 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   HTTP response written directly to the client socket, chainable where methods return `Response &`.
+//
+//   res.status(200).json(doc);                // sent by the server after the handlers
+//   res.beginStream(); res.sendChunk("1"); res.endStream();
+
+//
+//   Chapters:
+//     BUILD AND SEND RESPONSES   The Response class.
+//
+
 #pragma once
 
 #include <Arduino.h>
+#include <LittleFS.h>
 #include <sys/socket.h>
+
+#include <map>
+#include <string>
 
 #include <ArduinoJson.h>
 
-#include <LittleFS.h>
-#include <string>
-#include <map>
-
 namespace EspWeb
 {
+    // ===========================================================================
+    // ======================   BUILD AND SEND RESPONSES   =======================
+    // ===========================================================================
+    //
+    //   Construction   Binds the response to a socket.
+    //   Sending        send writes the whole response at once.
+    //   Streaming      beginStream, sendChunk and endStream for chunked encoding.
+    //   Finalize       Stops the remaining handlers and middlewares.
+    //   Headers        Custom headers and the header block.
+    //   Status codes   status and the shortcuts with a default body.
+    //   Body           File, text, JSON or HTML body.
+    //   Content type   Content-Type setters without a body.
+    //
+
     /**
      * @brief Represents an HTTP response that is written directly to a client socket.
      *
@@ -23,55 +48,20 @@ namespace EspWeb
      */
     class Response
     {
-    private:
-        /** @brief Set to true by finalize() or send(); prevents further modifications by middleware. */
-        int finalized = false;
-
-        /** @brief HTTP status code sent in the response line (default 200). */
-        int statusCode = 200;
-
-        /** @brief Custom headers added via header(). Sent once by sendHeaders(). */
-        std::map<std::string, std::string> headers;
-
-        /** @brief Size of the file to serve when isFileMode is true. */
-        size_t fileSize = 0;
-
-        /** @brief LittleFS path of the file to serve when isFileMode is true. */
-        std::string filePath;
-
-        /** @brief When true, send() reads from filePath instead of body. */
-        bool isFileMode = false;
-
-        /** @brief In-memory response body used when isFileMode is false. */
-        std::string body;
-
-        /** @brief Underlying TCP socket file descriptor. */
-        int socket;
-
-        /** @brief True after send() or endStream() has been called; prevents double-sending. */
-        int isSent = false;
-
-        /** @brief True after sendHeaders() has been called; prevents sending headers twice. */
-        int isHeaderSent = false;
-
-        /** @brief True while a chunked streaming session is active. */
-        int isStreaming = false;
-
+        // Construction
     public:
         /**
          * @brief Constructs a Response bound to the given socket.
          * @param socket File descriptor of the connected client socket.
          */
-        Response(int socket)
-        {
-            this->socket = socket;
-        }
+        Response(int socket) { this->socket = socket; }
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * sending & streaming
-         **/
+    private:
+        /** @brief Underlying TCP socket file descriptor. */
+        int socket;
 
+        // Sending
+    public:
         /**
          * @brief Finalizes and sends the complete response to the client.
          *
@@ -81,25 +71,24 @@ namespace EspWeb
         void send();
 
         /**
+         * @brief Sets the socket send/receive timeout.
+         * @param seconds Timeout in seconds applied to both SO_RCVTIMEO and SO_SNDTIMEO.
+         */
+        void setTimeout(int seconds);
+
+    private:
+        /** @brief True after send() or endStream() has been called; prevents double-sending. */
+        int isSent = false;
+
+        // Streaming
+    public:
+        /**
          * @brief Starts a chunked Transfer-Encoding streaming session.
          *
          * Sends headers with `Transfer-Encoding: chunked`. Must be called before sendChunk().
          * No-op if send() was already called.
          */
         void beginStream();
-
-        /**
-         * @brief Terminates the chunked streaming session by sending the final zero-length chunk.
-         *
-         * No-op if streaming was not started or the response was already sent.
-         */
-        void endStream();
-
-        /**
-         * @brief Sets the socket send/receive timeout.
-         * @param seconds Timeout in seconds applied to both SO_RCVTIMEO and SO_SNDTIMEO.
-         */
-        void setTimeout(int seconds);
 
         /**
          * @brief Sends a string as a single chunk in a chunked streaming session.
@@ -118,11 +107,19 @@ namespace EspWeb
          */
         void sendChunk(const uint8_t *data, size_t len);
 
-        /*-------------------------------------------------------------------------------------------------
+        /**
+         * @brief Terminates the chunked streaming session by sending the final zero-length chunk.
          *
-         * Finalize
-         **/
+         * No-op if streaming was not started or the response was already sent.
+         */
+        void endStream();
 
+    private:
+        /** @brief True while a chunked streaming session is active. */
+        int isStreaming = false;
+
+        // Finalize
+    public:
         /**
          * @brief Marks the response as finalized, preventing further handler/middleware processing.
          * @return Reference to this Response for chaining.
@@ -133,16 +130,14 @@ namespace EspWeb
          * @brief Returns whether the response has been finalized.
          * @return Non-zero if finalized, 0 otherwise.
          */
-        int isFinalized()
-        {
-            return finalized;
-        }
+        int isFinalized() { return finalized; }
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * Headers
-         **/
+    private:
+        /** @brief Set to true by finalize() or send(); prevents further modifications by middleware. */
+        int finalized = false;
 
+        // Headers
+    public:
         /**
          * @brief Adds or overwrites an HTTP response header.
          * @param key   Header name (e.g. `"Content-Type"`).
@@ -158,11 +153,15 @@ namespace EspWeb
          */
         void sendHeaders();
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * Common status codes
-         **/
+    private:
+        /** @brief Custom headers added via header(). Sent once by sendHeaders(). */
+        std::map<std::string, std::string> headers;
 
+        /** @brief True after sendHeaders() has been called; prevents sending headers twice. */
+        int isHeaderSent = false;
+
+        // Status codes
+    public:
         /**
          * @brief Sets an arbitrary HTTP status code.
          * @param status HTTP status code (e.g. 200, 404, 500).
@@ -198,11 +197,20 @@ namespace EspWeb
          */
         Response &Redirect(const std::string &location);
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * Response body helpers for different content types
-         **/
+    private:
+        /**
+         * @brief Sets a status and, if no body was set yet, a plain-text default body.
+         * @param status      HTTP status code.
+         * @param defaultBody Body used when the body is still empty.
+         * @return Reference to this Response for chaining.
+         */
+        Response &statusWithDefaultBody(int status, const char *defaultBody);
 
+        /** @brief HTTP status code sent in the response line (default 200). */
+        int statusCode = 200;
+
+        // Body
+    public:
         /**
          * @brief Queues a LittleFS file to be served and sets Content-Type from its extension.
          *
@@ -234,11 +242,21 @@ namespace EspWeb
          */
         Response &html(const std::string &htmlBody);
 
-        /*-------------------------------------------------------------------------------------------------
-         *
-         * Content Type setters
-         **/
+    private:
+        /** @brief In-memory response body used when isFileMode is false. */
+        std::string body;
 
+        /** @brief When true, send() reads from filePath instead of body. */
+        bool isFileMode = false;
+
+        /** @brief LittleFS path of the file to serve when isFileMode is true. */
+        std::string filePath;
+
+        /** @brief Size of the file to serve when isFileMode is true. */
+        size_t fileSize = 0;
+
+        // Content type
+    public:
         /** @brief Sets Content-Type to `application/octet-stream`. @return `*this` */
         Response &binary();
 

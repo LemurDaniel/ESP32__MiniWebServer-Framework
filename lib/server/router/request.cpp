@@ -2,23 +2,70 @@
 // Copyright © 2026, Daniel Landau
 // MIT License
 
+// NOTE:
+//   Implementation of request.h.
+
+//
+//   Chapters:
+//     HELPERS          Key-value splitting and header lookup.
+//     REQUEST BODY     Lazy body readers.
+//     PARSE REQUEST    Header extraction and the parse flow.
+//
+
+#include <cstdlib>
+
 #include <router/request.h>
+#include <utils/utility.log.h>
 
 namespace EspWeb
 {
+    // ===========================================================================
+    // ===============================   HELPERS   ===============================
+    // ===========================================================================
+    //
+    //   splitPair   Splits at the first separator into a trimmed key and value.
+    //   findValue   Returns a header value or nullptr.
+    //
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * RequestBody
-     *
-     **/
+    namespace
+    {
+        // Only the first separator splits, the value keeps the rest:
+        // "Host: 192.168.0.10:80" by ':' => {"Host", "192.168.0.10:80"}
+        // "token=abc=="           by '=' => {"token", "abc=="}
+        // "flag"                  by '=' => {"flag", ""}
+        std::pair<std::string, std::string> splitPair(const std::string &text, char separator)
+        {
+            const size_t pos = text.find(separator);
+            if (pos == std::string::npos)
+            {
+                return {fileHandler.trim(text), ""};
+            }
+
+            return {fileHandler.trim(text.substr(0, pos)), fileHandler.trim(text.substr(pos + 1))};
+        }
+
+        const std::string *findValue(const std::map<std::string, std::string> &map, const std::string &key)
+        {
+            const auto entry = map.find(key);
+            return entry != map.end() ? &entry->second : nullptr;
+        }
+    }
+
+    // ===========================================================================
+    // ============================   REQUEST BODY   =============================
+    // ===========================================================================
+    //
+    //   json     Parses the text body once.
+    //   text     Reads the whole body into memory once.
+    //   file     Writes the body into a LittleFS file.
+    //   chunks   Reads the next part of the body.
+    //
 
     JsonDocument &RequestBody::json()
     {
         if (bodyJson.size() == 0)
         {
-            this->text();
-            deserializeJson(bodyJson, bodyText.c_str());
+            deserializeJson(bodyJson, text().c_str());
         }
 
         return bodyJson;
@@ -34,11 +81,13 @@ namespace EspWeb
         char chunk[256];
         while (bodyText.size() < contentLength)
         {
-            size_t toRead = std::min((size_t)sizeof(chunk), contentLength - bodyText.size());
-            int n = socket.read(chunk, toRead);
+            const size_t toRead = std::min(sizeof(chunk), contentLength - bodyText.size());
+            const int n = socket.read(chunk, toRead);
             if (n <= 0)
+            {
                 break;
-            bodyText.insert(bodyText.end(), chunk, chunk + n);
+            }
+            bodyText.append(chunk, n);
         }
 
         return bodyText;
@@ -47,16 +96,20 @@ namespace EspWeb
     const std::string &RequestBody::file(const std::string &filePath)
     {
         if (filePath.empty())
+        {
             return filePath;
+        }
 
-        size_t slash = filePath.find_last_of('/');
+        const size_t slash = filePath.find_last_of('/');
         if (slash != std::string::npos)
+        {
             LittleFS.mkdir(filePath.substr(0, slash).c_str());
+        }
 
         File tmpFile = LittleFS.open(filePath.c_str(), "w", true);
         if (!tmpFile)
         {
-            Serial.printf("Failed to open file for writing: %s\n", filePath);
+            ESPWEB_LOG_ERROR("Request", "Failed to open file for writing: %s", filePath.c_str());
             return filePath;
         }
 
@@ -64,70 +117,84 @@ namespace EspWeb
         size_t written = 0;
         while (written < contentLength)
         {
-            size_t toRead = std::min(sizeof(chunk), contentLength - written);
-            int n = socket.read(chunk, toRead);
+            const size_t toRead = std::min(sizeof(chunk), contentLength - written);
+            const int n = socket.read(chunk, toRead);
             if (n <= 0)
+            {
                 break;
+            }
             tmpFile.write(chunk, n);
             written += n;
         }
-
         tmpFile.close();
-        Serial.printf("Written: %s (%zu bytes)\n", filePath.c_str(), written);
+
+        ESPWEB_LOG_DEBUG("Request", "Written: %s (%u bytes)", filePath.c_str(), (unsigned)written);
         return filePath;
     }
 
     size_t RequestBody::chunks(uint8_t *chunk, size_t chunkSize)
     {
         if (readSize >= contentLength)
+        {
             return 0;
+        }
 
-        size_t toRead = std::min(chunkSize, contentLength - readSize);
-        size_t n = socket.read(chunk, toRead);
+        const size_t toRead = std::min(chunkSize, contentLength - readSize);
+        const int n = socket.read(chunk, toRead);
+        if (n <= 0)
+        {
+            return 0;
+        }
+
         readSize += n;
-
         return n;
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Request — header extraction
-     *
-     **/
+    // ===========================================================================
+    // ============================   PARSE REQUEST   ============================
+    // ===========================================================================
+    //
+    //   extractHeader   Reads until the empty line, keeps the body bytes for later.
+    //   parse           Request line, headers, cookies, token and body metadata.
+    //
 
+    Request::~Request() {}
+
+    // "GET / HTTP/1.1\r\nHost: esp\r\n\r\n<body...>" => ["GET / HTTP/1.1", "Host: esp"], "<body...>" prepended
     std::vector<std::string> Request::extractHeader()
     {
         std::vector<std::string> headerRaw;
 
         char chunk[256];
-
         std::string header;
         header.reserve(512);
 
+        // Read until \r\n\r\n (complete headers)
         size_t headerEnd = std::string::npos;
-
-        // Phase 1: read until \r\n\r\n (complete headers)
         do
         {
-            int n = socket.read(chunk, sizeof(chunk));
+            const int n = socket.read(chunk, sizeof(chunk));
             if (n <= 0)
             {
-                Serial.println("Failed to read from socket");
+                ESPWEB_LOG_WARN("Request", "Failed to read from socket");
                 return {};
             }
             header.append(chunk, n);
             headerEnd = header.find("\r\n\r\n");
-        } while (headerEnd == std::string::npos && header.size() < 8192);
+        } while (headerEnd == std::string::npos && header.size() < MAX_HEADER_SIZE);
 
         if (headerEnd == std::string::npos)
+        {
+            rejected = true;
+            error = "Request header too large";
             return headerRaw;
+        }
 
-        // Phase 2: bytes after headers prepend for next read
-        const uint8_t *bodyStart = reinterpret_cast<const uint8_t *>(header.data()) + headerEnd + 4;
-        size_t bodyPrefixLen = header.size() - (headerEnd + 4);
-        socket.prepend(bodyStart, bodyPrefixLen);
+        // Bytes after the headers belong to the body, they are returned first on the next read.
+        const size_t bodyStart = headerEnd + 4;
+        socket.prepend(reinterpret_cast<const uint8_t *>(header.data()) + bodyStart, header.size() - bodyStart);
 
-        // Phase 3: split headers into list of lines
+        // Split the header block into lines
         header.resize(headerEnd);
         size_t startOfLine = 0;
         while (startOfLine < header.size())
@@ -138,93 +205,103 @@ namespace EspWeb
                 endOfLine = header.size();
             }
 
-            const std::string line = header.substr(startOfLine, endOfLine - startOfLine);
-            headerRaw.push_back(line);
+            headerRaw.push_back(header.substr(startOfLine, endOfLine - startOfLine));
             startOfLine = endOfLine + 2;
         }
 
         return headerRaw;
     }
 
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Request — destructor and parse
-     *
-     **/
-
-    Request::~Request() {}
-
     Request Request::parse(int clientSocket)
     {
         Request request;
         request.socket.clientSocket = clientSocket;
 
-        Serial.println("Extracing Raw Header");
-        std::vector<std::string> headerRaw = request.extractHeader();
+        // A default Token is valid, so without the NullToken auth() would accept requests without any token.
+        request.token = Token::NullToken();
 
-        // Move socket (with any buffered body-prefix bytes) into body
+        const std::vector<std::string> headerRaw = request.extractHeader();
+
+        // The socket (with any buffered body bytes) moves into the body.
         request.body.socket = std::move(request.socket);
         if (headerRaw.empty())
-            return request;
-
-        // Split: "GET /path HTTP/1.1"
-        std::vector<std::string> firstLine = fileHandler.split(headerRaw[0], " ");
-        request.method = firstLine[0];
-        request.path = firstLine[1];
-
-        // Reading URL Parameters
-        if (request.path.find("?") != std::string::npos)
         {
-            const std::vector<std::string> &segments = fileHandler.split(request.path, "?");
-            request.path = segments[0];
+            return request;
+        }
 
-            const std::vector<std::string> &query = fileHandler.split(segments[1], "&");
-            for (const std::string &param : query)
+        // Request line
+        // "GET /path?a=1&b HTTP/1.1" => method "GET", path "/path", query {a: "1", b: ""}
+        const std::vector<std::string> requestLine = fileHandler.split(headerRaw[0], " ");
+        if (requestLine.size() < 2)
+        {
+            ESPWEB_LOG_WARN("Request", "Malformed request line: %s", headerRaw[0].c_str());
+            return request;
+        }
+
+        request.method = requestLine[0];
+        request.path = requestLine[1];
+
+        const size_t queryStart = request.path.find('?');
+        if (queryStart != std::string::npos)
+        {
+            const std::string queryString = request.path.substr(queryStart + 1);
+            request.path.resize(queryStart);
+
+            for (const std::string &param : fileHandler.split(queryString, "&"))
             {
-                const std::vector<std::string> &pair = fileHandler.split(param, "=");
-                request.query.insert({pair[0], pair[1]});
+                request.query.insert(splitPair(param, '='));
             }
         }
 
-        // Reading headers
+        // Header fields
         for (size_t i = 1; i < headerRaw.size(); i++)
         {
-            std::vector<std::string> line = fileHandler.split(headerRaw[i], ":");
-            if (line.size() >= 2)
-                request.headers[line[0]] = line[1];
-        }
-
-        // Parsing Cookie Header
-        if (request.headers.find("Cookie") != request.headers.end())
-        {
-            std::vector<std::string> cookieHeader = fileHandler.split(request.headers["Cookie"], ";");
-            for (size_t i = 0; i < cookieHeader.size(); i++)
+            const auto field = splitPair(headerRaw[i], ':');
+            if (!field.first.empty())
             {
-                std::vector<std::string> line = fileHandler.split(cookieHeader[i], "=");
-                if (line.size() >= 2)
-                    request.cookies[line[0]] = line[1];
+                request.headers[field.first] = field.second;
             }
         }
 
-        const auto &cookie = request.cookies.find(DEFAULT_ADMIN_COOKIE);
-        const auto &header = request.headers.find("Authorization");
-        if (header != request.headers.end())
-            request.token = TokenManager::instance().checkToken(header->second);
-        else if (cookie != request.cookies.end())
+        // Cookies
+        // "Cookie: a=1; b=2" => {a: "1", b: "2"}
+        if (const std::string *cookieHeader = findValue(request.headers, "Cookie"))
         {
-            request.token = TokenManager::instance().checkToken(cookie->second);
+            for (const std::string &cookie : fileHandler.split(*cookieHeader, ";"))
+            {
+                const auto pair = splitPair(cookie, '=');
+                if (!pair.first.empty())
+                {
+                    request.cookies[pair.first] = pair.second;
+                }
+            }
         }
 
-        if (request.headers.find("Content-Type") != request.headers.end())
+        // Token
+        // Order of precedence: Authorization header > admin cookie > NullToken (set above).
+        if (const std::string *authorization = findValue(request.headers, "Authorization"))
         {
-            request.body.contentType = request.headers["Content-Type"];
+            request.token = TokenManager::instance().checkToken(*authorization);
+        }
+        else if (const std::string *cookie = findValue(request.cookies, DEFAULT_ADMIN_COOKIE))
+        {
+            request.token = TokenManager::instance().checkToken(*cookie);
         }
 
-        if (request.headers.find("Content-Length") != request.headers.end())
+        // Body metadata
+        if (const std::string *contentType = findValue(request.headers, "Content-Type"))
         {
-            request.body.contentLength = std::stoul(request.headers["Content-Length"]);
+            request.body.contentType = *contentType;
         }
 
+        // strtoul instead of stoul: an invalid value results in 0 instead of an exception.
+        if (const std::string *contentLength = findValue(request.headers, "Content-Length"))
+        {
+            request.body.contentLength = std::strtoul(contentLength->c_str(), nullptr, 10);
+        }
+
+        ESPWEB_LOG_DEBUG("Request", "%s %s (%u body bytes)", request.method.c_str(), request.path.c_str(),
+                         (unsigned)request.body.contentLength);
         return request;
     }
 }
